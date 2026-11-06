@@ -191,22 +191,26 @@ awaazops/
 │  │  ├─ audio/                  # Recorder, Waveform, AudioPlayer
 │  │  └─ agent/  dashboard/  lab/
 │  ├─ domain/                    # isomorphic types + Zod schemas + report lifecycle ✅
-│  ├─ server/                    # import 'server-only' everywhere here
+│  ├─ server/                    # server-side only (I/O modules import 'server-only')
 │  │  ├─ env.ts                  # Zod-validated env ✅
 │  │  ├─ providers/              # ✅ interfaces + mocks; Gnani adapters stubbed
 │  │  │  ├─ stt/   {types, gnani-prisma, mock, index}
 │  │  │  ├─ tts/   {types, gnani-timbre, mock, index}
 │  │  │  ├─ llm/   {types, mock, index}
 │  │  │  └─ status.ts, errors.ts
-│  │  ├─ reliability/            # schema, normalise, evidence, verify, policy, clarify
-│  │  ├─ pipeline/               # orchestrator, timings
-│  │  ├─ actions/                # executor (confirmed-only)
-│  │  └─ db/                     # supabase server client, repositories
+│  │  ├─ reliability/            # ✅ pure: validate, order-reference, policy, prompts
+│  │  ├─ pipeline/               # ✅ submit / edit / confirm / reject orchestration
+│  │  ├─ actions/                # ✅ pure applyAction (confirmed-only by lifecycle)
+│  │  ├─ repositories/           # ✅ OperationsRepository + in-memory impl (Supabase in step 8)
+│  │  ├─ data/                   # ✅ read side for pages (request-time)
+│  │  ├─ auth/current-agent.ts   # demo agent until Supabase Auth
+│  │  └─ http.ts                 # uniform API errors
 │  ├─ lib/                       # isomorphic utils (cn, formatting, time, ids)
 │  └─ hooks/                     # useRecorder, useWaveform, useRealtime
 └─ tests/
-   ├─ unit/                      # reliability engine (highest priority)
-   └─ fixtures/                  # transcripts + labelled audio for the lab
+   ├─ unit/                      # ✅ Vitest: validation, lifecycle, pipeline, metrics
+   ├─ stubs/                     # test stand-ins (server-only)
+   └─ fixtures/                  # labelled audio for the lab (step 5+)
 ```
 
 ## 9. Development Sequence
@@ -221,7 +225,16 @@ Each step ends in a verifiable, demoable state before moving on.
      (`src/lib/demo/pipeline.ts`) — replaced by `POST /api/reports` in step 4.
    - Lab scores (WER, field accuracy, unsafe updates) are real computations in `src/lib/lab-metrics.ts`
      over simulated outputs; latencies are labelled illustrative.
-4. **Backend services** — API routes, pipeline orchestrator, state machine, repositories (in-memory first).
+4. **Backend services** — API routes, pipeline orchestrator, state machine, repositories (in-memory first). ✅
+   - `POST /api/reports` streams NDJSON stage events; `/api/reports/:id/{confirm,edit,reject}`; `GET /api/reports[/:id]`.
+   - `src/server/pipeline/process-report.ts` enforces the lifecycle on every transition, measures stage latency,
+     audits every state change, and re-checks the order at confirm time.
+   - The deterministic core of the Reliability Engine was brought forward from step 6 (`src/server/reliability/`):
+     schema, evidence grounding/repair, required fields, order existence + near-miss suggestion, assignment,
+     status policy, time validity, confidence. Step 6 adds the real LLM, spoken-number/time normalisation and
+     language-aware prompts.
+   - In-memory repository (`src/server/repositories/memory.ts`), per process, resets on restart.
+   - Vitest: `npm test` (lifecycle, validation, order references, actions, lab metrics, full pipeline).
 5. **Prisma integration** — after verifying official docs: auth, audio format, sync vs. streaming, language codes.
 6. **Reasoning & validation** — LLM adapter, extraction schema, Reliability Engine with unit tests.
 7. **Timbre integration** — after verifying docs: voices, languages, output format.
@@ -268,3 +281,12 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Lab headline metric is "unsafe updates" (wrong order ID that still verified), alongside accuracy | Reliability, not raw accuracy, is the differentiator |
 | 2026-11-06 | Components that call `usePathname` sit inside `<Suspense>` with a hook-free fallback | Required by Cache Components for routes with dynamic params |
 | 2026-11-06 | Exception detail reads params inside `<Suspense>` (no `generateStaticParams`) | Works unchanged once IDs come from the database; trade-off: unknown IDs render not-found UI with HTTP 200 |
+| 2026-11-06 | Validation is a pure function over an order snapshot; the pipeline does all I/O | Testable without a database; same engine for submit and edit |
+| 2026-11-06 | Ungrounded values are removed, not flagged; offsets are repaired when the quote exists elsewhere | "Unverified" must never reach an action |
+| 2026-11-06 | Near-miss order suggestions only when exactly one candidate on the agent's own route | Never guess between candidates |
+| 2026-11-06 | Agent-typed edits are exempt from transcript grounding but still fully re-verified | The agent is the source of truth for their own corrections |
+| 2026-11-06 | Order is re-checked at confirm time; a changed order fails the report instead of writing | Confirmation can lag verification |
+| 2026-11-06 | TTS failure is non-fatal; the prompt is still shown as text | A voice outage must not block operations |
+| 2026-11-06 | Agent identity resolved server-side (`getCurrentAgentId`), never from the request body | No spoofable actor before auth exists |
+| 2026-11-06 | `POST /api/reports` streams NDJSON stage events | Progress UI reflects real work, not timers |
+| 2026-11-06 | `@types/node` bumped to ^22 | Required by Vitest 5 peer range |

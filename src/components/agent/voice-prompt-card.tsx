@@ -12,9 +12,12 @@ import { cn } from "@/lib/utils";
 export function VoicePromptCard({
   text,
   tone,
+  simulated,
 }: {
   text: string;
   tone: "confirm" | "clarify" | "blocked";
+  /** Whether text-to-speech is the mock provider (no audio exists). */
+  simulated: boolean;
 }) {
   return (
     <section
@@ -30,7 +33,7 @@ export function VoicePromptCard({
           <MessageCircleQuestion className="size-3.5" aria-hidden="true" />
           {tone === "confirm" ? "Confirmation" : tone === "clarify" ? "Clarification needed" : "Not updated"}
         </p>
-        <ProviderBadge provenance={{ provider: "mock-tts", simulated: true }} />
+        <ProviderBadge provenance={{ provider: simulated ? "mock-tts" : "gnani-timbre", simulated }} />
       </div>
       <div className="flex items-start gap-3">
         <Tooltip>

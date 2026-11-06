@@ -56,14 +56,9 @@ async function ExceptionDetail({ id }: { id: string }) {
   const detail = await getReport(id);
   if (!detail) notFound();
   const { report, agent, transcript, extraction, validation, order, action } = detail;
-  const [events, agents] = await Promise.all([
-    listAuditEvents([report.id, `${report.id}-A`, ...(order ? [order.id] : [])]),
-    listAgents(),
-  ]);
-  // Only this report's order events (an order can have several reports), oldest first.
-  const scoped = events
-    .filter((e) => e.entity !== "ORDER" || e.id.startsWith(report.id))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true }));
+  const [events, agents] = await Promise.all([listAuditEvents(report.id), listAgents()]);
+  // listAuditEvents is newest first; the per-report trail reads better oldest first.
+  const scoped = [...events].reverse();
 
   return (
     <div className="space-y-6">
@@ -192,7 +187,13 @@ async function ExceptionDetail({ id }: { id: string }) {
 
           <Panel
             title="Pipeline latency"
-            actions={<span className="font-mono text-[10px] tracking-wider text-simulated uppercase">Illustrative</span>}
+            actions={
+              report.timingSource === "illustrative" ? (
+                <span className="font-mono text-[10px] tracking-wider text-simulated uppercase">Illustrative</span>
+              ) : (
+                <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">Measured</span>
+              )
+            }
           >
             <StageTimings timings={report.timings} />
           </Panel>

@@ -15,7 +15,7 @@ export function DemoDataBanner({ children, className }: { children?: React.React
       <p className="text-pretty">
         <span className="font-semibold">Demo data.</span>{" "}
         {children ??
-          "Orders, reports and AI outputs on this screen are fixtures. AI results are simulated, not produced by Gnani or an LLM."}
+          "Seeded orders and reports, plus any you submit, live in an in-memory store that resets when the server restarts. AI results come from mock providers, not Gnani or an LLM."}
       </p>
     </div>
   );

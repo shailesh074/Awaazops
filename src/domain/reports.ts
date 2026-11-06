@@ -57,6 +57,8 @@ export const voiceReportSchema = z.object({
   audioDurationMs: z.number().nonnegative().nullable(),
   failureReason: z.string().nullable(),
   timings: z.array(stageTimingSchema),
+  /** "measured" when produced by the running pipeline; "illustrative" for seeded demo records. */
+  timingSource: z.enum(["measured", "illustrative"]),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -84,6 +86,8 @@ export const auditEventSchema = z.object({
   actorRole: z.enum(["AGENT", "DISPATCHER", "SYSTEM"]),
   entity: z.enum(["REPORT", "ORDER", "ACTION"]),
   entityId: z.string(),
+  /** The voice report this event traces back to, so every change links to its evidence. */
+  reportId: z.string().nullable(),
   event: z.string(),
   before: z.unknown().nullable(),
   after: z.unknown().nullable(),

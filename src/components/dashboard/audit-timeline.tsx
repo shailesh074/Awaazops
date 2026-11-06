@@ -11,6 +11,7 @@ export const EVENT_LABELS: Record<string, string> = {
   ACTION_EXECUTED: "Action executed",
   ORDER_UPDATED: "Order updated",
   REPORT_REJECTED: "Report rejected",
+  REPORT_EDITED: "Report edited by agent",
   PIPELINE_FAILED: "Pipeline failed",
 };
 
@@ -18,16 +19,13 @@ function describe(e: AuditEvent): string | null {
   const after = (e.after ?? {}) as Record<string, unknown>;
   const before = (e.before ?? {}) as Record<string, unknown>;
   if (e.event === "ORDER_UPDATED" && before.status !== after.status) return `${before.status} → ${after.status}`;
+  if (e.event === "ORDER_UPDATED" && before.slotStart !== after.slotStart) return "Slot changed";
   if (e.event === "ORDER_UPDATED") return "Instructions changed";
+  if (e.event === "REPORT_EDITED") return `→ ${String(after.outcome ?? "")}`;
   if (e.event === "VALIDATION_COMPLETED") return String(after.outcome);
   if (e.event === "ACTION_CONFIRMED" || e.event === "ACTION_EXECUTED") return String(after.action ?? after.type ?? "");
   if (e.event === "PIPELINE_FAILED") return String(after.reason ?? "");
   return null;
-}
-
-/** Report ID an event belongs to, for linking back to its evidence. */
-function reportIdOf(e: AuditEvent): string | null {
-  return e.entity === "REPORT" ? e.entityId : e.id.split("-E")[0];
 }
 
 export function AuditTimeline({
@@ -47,7 +45,7 @@ export function AuditTimeline({
       {events.map((e, i) => {
         const Icon: LucideIcon = e.actorRole === "AGENT" ? CircleUser : Bot;
         const detail = describe(e);
-        const reportId = reportIdOf(e);
+        const reportId = e.reportId;
         return (
           <li key={e.id} className="relative flex gap-3 pb-5 last:pb-0">
             {i < events.length - 1 ? (

@@ -7,7 +7,7 @@ import { ClipPlayer } from "@/components/audio/clip-player";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { LANGUAGE_CODES, LANGUAGE_LABELS, type LanguageCode } from "@/domain";
-import { AGENT_SCENARIOS } from "@/mocks/agent-scenarios";
+import { DEMO_SCRIPTS } from "@/mocks/agent-scenarios";
 import { MAX_RECORDING_MS, type useAudioRecorder } from "@/hooks/use-audio-recorder";
 
 type Recorder = ReturnType<typeof useAudioRecorder>;
@@ -19,6 +19,7 @@ export function ComposeStep({
   scenarioId,
   onScenario,
   onSubmit,
+  sttSimulated,
 }: {
   language: LanguageCode;
   onLanguage: (l: LanguageCode) => void;
@@ -26,6 +27,8 @@ export function ComposeStep({
   scenarioId: string;
   onScenario: (id: string) => void;
   onSubmit: () => void;
+  /** True while speech-to-text is the mock: a demo script stands in for the transcript. */
+  sttSimulated: boolean;
 }) {
   const { status, elapsedMs, audio, analyser, error } = recorder;
   const recording = status === "recording";
@@ -115,18 +118,19 @@ export function ComposeStep({
         ) : null}
       </section>
 
-      {/* Demo scenario */}
+      {/* Demo script — only while speech-to-text is mocked */}
+      {sttSimulated ? (
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-xs text-muted-foreground">Demo scenario</h2>
-          <span className="font-mono text-[10px] tracking-wider text-simulated uppercase">Simulated</span>
+          <h2 className="text-xs text-muted-foreground">Demo script</h2>
+          <span className="font-mono text-[10px] tracking-wider text-simulated uppercase">Simulated STT</span>
         </div>
         <p className="text-xs text-pretty text-muted-foreground">
-          Gnani Prisma is not connected yet, so your recording is not transcribed. Pick the scripted outcome to
-          walk through.
+          Gnani Prisma is not connected yet, so your recording is not transcribed. The script you pick is used as
+          the transcript; understanding, verification and confirmation then run for real.
         </p>
         <div className="grid gap-1.5">
-          {AGENT_SCENARIOS.map((s) => (
+          {DEMO_SCRIPTS.map((s) => (
             <label
               key={s.id}
               className={cn(
@@ -150,9 +154,15 @@ export function ComposeStep({
           ))}
         </div>
       </section>
+      ) : null}
 
-      <Button size="lg" className="h-11 w-full" onClick={onSubmit} disabled={recording || status === "requesting"}>
-        {audio ? "Send report" : "Run demo scenario"}
+      <Button
+        size="lg"
+        className="h-11 w-full"
+        onClick={onSubmit}
+        disabled={recording || status === "requesting" || (!sttSimulated && !audio)}
+      >
+        {audio || !sttSimulated ? "Send report" : "Send demo script"}
       </Button>
     </div>
   );

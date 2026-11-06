@@ -69,6 +69,7 @@ export function buildReport(spec: ReportSpec): ReportDetail {
       audioDurationMs: spec.durationMs,
       failureReason: spec.failureReason ?? null,
       timings,
+      timingSource: "illustrative",
       createdAt,
       updatedAt: confirmed ? addMin(createdAt, 1) : createdAt,
     },
@@ -126,7 +127,8 @@ export function buildReport(spec: ReportSpec): ReportDetail {
 export function buildAuditTrail(spec: ReportSpec): AuditEvent[] {
   const t0 = ist(spec.at);
   const events: AuditEvent[] = [];
-  const push = (e: Omit<AuditEvent, "id">) => events.push({ ...e, id: `${spec.id}-E${events.length + 1}` });
+  const push = (e: Omit<AuditEvent, "id" | "reportId">) =>
+    events.push({ ...e, reportId: spec.id, id: `${spec.id}-E${events.length + 1}` });
 
   push({ actorId: spec.agentId, actorRole: "AGENT", entity: "REPORT", entityId: spec.id, event: "REPORT_SUBMITTED", before: null, after: { language: spec.language }, createdAt: t0 });
 
