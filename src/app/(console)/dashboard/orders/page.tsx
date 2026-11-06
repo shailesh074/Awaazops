@@ -1,26 +1,26 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { ScaffoldPanel } from "@/components/shared/scaffold-panel";
+import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { OrdersTable } from "@/components/dashboard/orders-table";
+import { listAgents, listOrders, listReports } from "@/server/data";
 
 export const metadata: Metadata = { title: "Orders" };
 
-export default function OrdersPage() {
+export default async function OrdersPage() {
+  const [orders, agents, reports] = await Promise.all([listOrders(), listAgents(), listReports()]);
+  const reportsByOrder: Record<string, string[]> = {};
+  for (const r of reports) {
+    if (r.order) (reportsByOrder[r.order.id] ??= []).push(r.report.id);
+  }
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Operations"
         title="Orders"
-        description="Search and filter delivery orders and see every voice report linked to them."
+        description="Today's delivery manifest and the voice reports linked to each order."
       />
-      <ScaffoldPanel
-        step="step 3 (frontend)"
-        items={[
-          "Order search by ID, customer, locality",
-          "Filters: status, priority, agent, slot",
-          "Order detail with slot and instructions",
-          "Linked voice reports and actions",
-        ]}
-      />
+      <DemoDataBanner />
+      <OrdersTable orders={orders} agents={agents} reportsByOrder={reportsByOrder} />
     </div>
   );
 }

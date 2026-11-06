@@ -1,26 +1,22 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { ScaffoldPanel } from "@/components/shared/scaffold-panel";
+import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { AuditLog } from "@/components/dashboard/audit-log";
+import { listAgents, listAuditEvents } from "@/server/data";
 
 export const metadata: Metadata = { title: "Audit trail" };
 
-export default function AuditPage() {
+export default async function AuditPage() {
+  const [events, agents] = await Promise.all([listAuditEvents(), listAgents()]);
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Operations"
         title="Audit trail"
-        description="Append-only record of every confirmation, edit, rejection and executed action."
+        description="Append-only record of submissions, verification outcomes, confirmations and executed changes."
       />
-      <ScaffoldPanel
-        step="step 3 (frontend)"
-        items={[
-          "Chronological event timeline",
-          "Actor, entity and before/after diff",
-          "Filter by order, agent or event type",
-          "Link from each event back to its source transcript",
-        ]}
-      />
+      <DemoDataBanner />
+      <AuditLog events={events} agents={agents} />
     </div>
   );
 }

@@ -40,9 +40,23 @@ function isActive(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Reads the pathname for active-link state. Render inside <Suspense> (see layout). */
 export function ConsoleNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  return <ConsoleNavLinks pathname={pathname} onNavigate={onNavigate} />;
+}
 
+/**
+ * Hook-free nav. With `pathname={null}` it is the prerendered Suspense fallback: identical links,
+ * no active state, so the static shell never blocks on URL data.
+ */
+export function ConsoleNavLinks({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string | null;
+  onNavigate?: () => void;
+}) {
   return (
     <nav aria-label="Primary" className="flex flex-col gap-6">
       {SECTIONS.map((section) => (
@@ -51,7 +65,7 @@ export function ConsoleNav({ onNavigate }: { onNavigate?: () => void }) {
             {section.title}
           </p>
           {section.items.map(({ href, label, icon: Icon }) => {
-            const active = isActive(pathname, href);
+            const active = pathname !== null && isActive(pathname, href);
             return (
               <Link
                 key={href}

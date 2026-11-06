@@ -1,28 +1,22 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { ScaffoldPanel } from "@/components/shared/scaffold-panel";
+import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { ExceptionsTable } from "@/components/dashboard/exceptions-table";
+import { listReports } from "@/server/data";
 
 export const metadata: Metadata = { title: "Exceptions" };
 
-export default function ExceptionsPage() {
+export default async function ExceptionsPage() {
+  const reports = await listReports();
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Operations"
         title="Exceptions"
-        description="Voice-reported issues awaiting review, clarification or confirmation."
+        description="Every voice report, with what was extracted, how it was verified and what happened next."
       />
-      <ScaffoldPanel
-        step="step 3 (frontend)"
-        items={[
-          "Filterable exception table (status, priority, issue, agent)",
-          "Exception inspector: audio, transcript, evidence highlights",
-          "Extracted fields with per-field confidence",
-          "Validation checks and outcome",
-          "Clarification history",
-          "Linked order and audit events",
-        ]}
-      />
+      <DemoDataBanner />
+      <ExceptionsTable reports={reports} />
     </div>
   );
 }

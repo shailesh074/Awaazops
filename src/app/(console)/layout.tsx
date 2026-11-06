@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BrandLockup } from "@/components/shared/brand-mark";
-import { ConsoleNav } from "@/components/layout/console-nav";
+import { ConsoleNav, ConsoleNavLinks } from "@/components/layout/console-nav";
 import { ConsoleMobileNav } from "@/components/layout/console-mobile-nav";
 
 /** Desktop-first shell for the Operations Dashboard and Intelligence Testing Lab. */
@@ -11,7 +12,10 @@ export default function ConsoleLayout({ children }: LayoutProps<"/">) {
         <Link href="/" className="mb-8 px-2.5">
           <BrandLockup />
         </Link>
-        <ConsoleNav />
+        {/* usePathname is URL data under Cache Components; Suspense keeps the shell prerenderable. */}
+        <Suspense fallback={<ConsoleNavLinks pathname={null} />}>
+          <ConsoleNav />
+        </Suspense>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

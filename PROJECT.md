@@ -215,7 +215,12 @@ Each step ends in a verifiable, demoable state before moving on.
 
 1. **Understand the product** — this document. ✅
 2. **Architecture & scaffold** — Next.js 16 app, Tailwind, shadcn/ui, design tokens, folder skeleton, env schema, provider interfaces, domain types. ✅
-3. **Frontend** — design system, Agent Portal, Operations Dashboard, Testing Lab on typed mock data (badged SIMULATED).
+3. **Frontend** — design system, Agent Portal, Operations Dashboard, Testing Lab on typed mock data (badged SIMULATED). ✅
+   - Demo fixtures live in `src/mocks/`; pages read them only through `src/server/data/` (swap to Supabase in step 8).
+   - Agent Portal records real audio (MediaRecorder + live waveform) but runs a scripted pipeline
+     (`src/lib/demo/pipeline.ts`) — replaced by `POST /api/reports` in step 4.
+   - Lab scores (WER, field accuracy, unsafe updates) are real computations in `src/lib/lab-metrics.ts`
+     over simulated outputs; latencies are labelled illustrative.
 4. **Backend services** — API routes, pipeline orchestrator, state machine, repositories (in-memory first).
 5. **Prisma integration** — after verifying official docs: auth, audio format, sync vs. streaming, language codes.
 6. **Reasoning & validation** — LLM adapter, extraction schema, Reliability Engine with unit tests.
@@ -258,3 +263,8 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-05 | Domain types live in `src/domain/` as Zod schemas | One source for runtime validation and TS types, shared client/server |
 | 2026-11-05 | Provider chosen by `AWAAZ_*_PROVIDER` env; real provider failures are surfaced, never swapped for mocks | Honest provenance |
 | 2026-11-05 | Mock STT ignores audio and returns a fixed or supplied transcript; mock TTS returns no audio | Mocks must not pretend to be AI |
+| 2026-11-06 | No browser speech synthesis as a stand-in for Timbre; the play control stays disabled until Timbre is integrated | A fake voice would misrepresent the product |
+| 2026-11-06 | Demo evidence offsets are computed from transcript text (`src/mocks/build.ts`) | Highlights can never point at the wrong words |
+| 2026-11-06 | Lab headline metric is "unsafe updates" (wrong order ID that still verified), alongside accuracy | Reliability, not raw accuracy, is the differentiator |
+| 2026-11-06 | Components that call `usePathname` sit inside `<Suspense>` with a hook-free fallback | Required by Cache Components for routes with dynamic params |
+| 2026-11-06 | Exception detail reads params inside `<Suspense>` (no `generateStaticParams`) | Works unchanged once IDs come from the database; trade-off: unknown IDs render not-found UI with HTTP 200 |

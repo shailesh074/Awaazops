@@ -6,3 +6,4 @@ export * from "./extraction";
 export * from "./validation";
 export * from "./reports";
 export * from "./report-lifecycle";
+export * from "./views";

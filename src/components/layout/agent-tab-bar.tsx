@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { History, Mic } from "lucide-react";
@@ -10,33 +11,45 @@ const TABS = [
   { href: "/agent/history", label: "History", icon: History },
 ] as const;
 
+function Tabs({ pathname }: { pathname: string | null }) {
+  return (
+    <ul className="mx-auto grid max-w-md grid-cols-2">
+      {TABS.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href;
+        return (
+          <li key={href}>
+            <Link
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
+                active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className={cn("size-5", active && "text-primary")} aria-hidden="true" />
+              {label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ActiveTabs() {
+  return <Tabs pathname={usePathname()} />;
+}
+
 export function AgentTabBar() {
-  const pathname = usePathname();
   return (
     <nav
       aria-label="Agent"
       className="sticky bottom-0 z-20 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur"
     >
-      <ul className="mx-auto grid max-w-md grid-cols-2">
-        {TABS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
-          return (
-            <li key={href}>
-              <Link
-                href={href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
-                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className={cn("size-5", active && "text-primary")} aria-hidden="true" />
-                {label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {/* Pathname is URL data under Cache Components; the fallback keeps the shell prerenderable. */}
+      <Suspense fallback={<Tabs pathname={null} />}>
+        <ActiveTabs />
+      </Suspense>
     </nav>
   );
 }
