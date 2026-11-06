@@ -74,4 +74,14 @@ describe("report pipeline", () => {
     const rejected = await rejectReport(r.report.id, AGENT);
     expect(rejected.report.status).toBe("REJECTED");
   });
+
+  it("handles Prisma's grouped digits (live transcript, 2026-11-06)", async () => {
+    // Verbatim Prisma v2.5 output (en-IN, format=transcribe) for a spoken order number.
+    const live = "order 4,907 security is not allowing entry customer said leave it at reception";
+    const r = await submit(live);
+    expect(r.extraction?.payload.orderReference.value).toBe("4907");
+    expect(r.extraction?.payload.orderReference.evidence?.quote).toBe("order 4,907");
+    expect(r.order?.id).toBe("ORD-4907");
+    expect(r.report.status).toBe("AWAITING_CONFIRMATION");
+  });
 });

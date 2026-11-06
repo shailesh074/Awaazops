@@ -236,7 +236,8 @@ Each step ends in a verifiable, demoable state before moving on.
    - In-memory repository (`src/server/repositories/memory.ts`), per process, resets on restart.
    - Vitest: `npm test` (lifecycle, validation, order references, actions, lab metrics, full pipeline).
 5. **Prisma integration** — after verifying official docs: auth, audio format, sync vs. streaming, language codes.
-   ✅ implemented and contract-tested; ⏳ live verification pending a Gnani API key.
+   ✅ implemented, contract-tested, and **verified live on 2026-11-06** (prisma-v2.5, synthetic en-US TTS clips):
+   ~0.15–0.18 s Gnani processing, 0.35–0.7 s round trip; full app path report → verify → confirmation prompt works.
    - Adapter: `src/server/providers/stt/gnani-prisma.ts`, REST `POST {GNANI_API_BASE_URL}/stt/v3`, built only from
      docs.gnani.ai (read 2026-11-06). Unit tests pin the documented request/response/error shapes.
    - Browser converts recordings to 16 kHz mono WAV (`src/lib/audio/to-wav.ts`) — WebM is not a documented format.
@@ -263,8 +264,15 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
       `wss://api.vachana.ai/stt/v3/stream`; formats WAV/MP3/OGG/FLAC/AAC/M4A; 10 language codes incl. `hi-IN`,
       `en-IN`; no Hinglish code (`en-IN` accepts English-Hindi mixed audio, Latin output); response has
       `transcript`, `model`, `request_id` — **no confidence, no timestamps**; one active request per key.
-- [ ] Prisma live behaviour still to confirm with a real key: Hinglish quality on `en-IN` vs. v3.0 `codemix`,
-      whether `transcribe` turns spoken Hindi digits into numerals, real latency, max file size (not documented).
+- [x] Prisma live findings (2026-11-06, synthetic en-US voice — not representative of Indian accents):
+      - `transcribe` on `en-IN` turns English number words into **grouped digits** ("order 4,907"); `output.literal`
+        keeps the words. Order parsing must accept thousands separators (done).
+      - Spoken **Hindi digit words are NOT converted**: "chaar aath do ek" → "char auth do ek". The step 6
+        normaliser must map Hindi digit words, including spelling variants (char/chaar, auth/aath…).
+      - `hi-IN` returns Devanagari with English words transliterated ("ऑर्डर फोर थाउज़ंड…") — reasoning must handle it.
+      - No confidence/timestamps in responses, as documented; `request_id` always present.
+- [ ] Still open: accuracy on real Indian-accented and noisy field audio (needs human recordings), v3.0 `codemix`
+      vs. v2.5 `en-IN` for Hinglish, max upload size.
 - [ ] Gnani Timbre v2.5: endpoint, auth, voices per language, output format (mp3/wav/pcm), latency, SSML support.
 - [ ] Gnani credential access timeline and rate limits for the challenge.
 - [ ] Evon v3.3 availability and fit.

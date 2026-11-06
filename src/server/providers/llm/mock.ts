@@ -71,9 +71,13 @@ export class MockReasoningProvider implements ReasoningProvider {
   async extract({ transcript: t, referenceTime }: ReasoningInput): Promise<ReasoningResult> {
     const started = performance.now();
 
+    // Prisma's `transcribe` format groups digits ("order 4,907"), so accept grouped numbers too.
+    // The quote keeps the transcript's exact text; the value is digits only.
+    const NUM = String.raw`(?:\d{1,3}(?:,\d{3})+|\d{3,})`;
     const order =
-      find(t, /order\s*(?:no\.?|number)?\s*#?\s*\d{3,}/i) ?? find(t, /\b\d{4,}\b(?=\s*(?:ka|ke|ki|wala|wali|,|$))/i);
-    const orderDigits = order?.quote.match(/\d{3,}/)?.[0] ?? null;
+      find(t, new RegExp(String.raw`order\s*(?:no\.?|number)?\s*#?\s*${NUM}`, "i")) ??
+      find(t, new RegExp(String.raw`\b${NUM}\b(?=\s*(?:ka|ke|ki|wala|wali|,|$))`, "i"));
+    const orderDigits = order ? (order.quote.match(new RegExp(NUM))?.[0].replace(/,/g, "") ?? null) : null;
 
     const unavailable = find(t, /ghar pe nahi|not at home|available nahi|phone nahi utha\w*|bahar gaye/i);
     const address = find(t, /address\s*(?:galat|is wrong)|building hi nahi|galat location/i);
