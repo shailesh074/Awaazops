@@ -29,7 +29,14 @@ const serverEnvSchema = z.object({
   GNANI_STT_MODEL: z.enum(["prisma-v2.5", "prisma-v3.0"]).default("prisma-v2.5"),
   /** Output style: `verbatim` (raw) or `transcribe` (inverse text normalisation, e.g. spoken numbers → digits). */
   GNANI_STT_FORMAT: z.enum(["verbatim", "transcribe"]).default("transcribe"),
-  GNANI_TIMBRE_BASE_URL: optionalString,
+  /** Timbre model (docs: `timbre-v2.5` recommended; `timbre-v3.0` has a different voice catalog). */
+  GNANI_TTS_MODEL: z.enum(["timbre-v2.5"]).default("timbre-v2.5"),
+  /** Voices from the documented timbre-v2.5 catalog, one per AwaazOps language. */
+  GNANI_TTS_VOICE_HI: z.string().trim().min(1).default("Nalini"),
+  GNANI_TTS_VOICE_EN: z.string().trim().min(1).default("Kaveri"),
+  GNANI_TTS_VOICE_HINGLISH: z.string().trim().min(1).default("Poorvi"),
+  /** Output container: mp3 is small for mobile playback; wav is the documented example. */
+  GNANI_TTS_CONTAINER: z.enum(["mp3", "wav"]).default("mp3"),
 
   // Reasoning LLM — Claude via the Anthropic SDK.
   ANTHROPIC_API_KEY: optionalString,

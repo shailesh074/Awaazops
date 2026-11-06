@@ -6,6 +6,7 @@ import type {
   OperationalAction,
   Order,
   Priority,
+  Provenance,
   ReportDetail,
   Transcript,
   ValidationResult,
@@ -21,6 +22,14 @@ export interface StoredReport {
   actionId: string | null;
   priority: Priority;
   confirmationPrompt: string | null;
+}
+
+/** Synthesized speech for a report's current prompt. `text` ties the audio to the prompt it was made from. */
+export interface StoredPromptAudio {
+  data: ArrayBuffer;
+  mimeType: string;
+  text: string;
+  provenance: Provenance;
 }
 
 /**
@@ -44,6 +53,10 @@ export interface OperationsRepository {
   nextReportId(): Promise<string>;
 
   saveAction(action: OperationalAction): Promise<void>;
+
+  /** Audio for the report's current prompt (Supabase Storage in step 8). */
+  savePromptAudio(reportId: string, audio: StoredPromptAudio): Promise<void>;
+  getPromptAudio(reportId: string): Promise<StoredPromptAudio | null>;
 
   /** Append-only. */
   appendAudit(event: Omit<AuditEvent, "id">): Promise<AuditEvent>;

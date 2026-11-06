@@ -199,6 +199,15 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
         text={prompt}
         tone={awaiting ? "confirm" : report.status === "REJECTED" ? "blocked" : "clarify"}
         simulated={ttsSimulated}
+        audio={
+          detail.promptAudio
+            ? {
+                // The version param changes whenever a new prompt is synthesized (e.g. after an edit).
+                url: `/api/reports/${encodeURIComponent(report.id)}/prompt-audio?v=${encodeURIComponent(detail.promptAudio.provenance.createdAt)}`,
+                provenance: detail.promptAudio.provenance,
+              }
+            : null
+        }
       />
 
       {editing ? (

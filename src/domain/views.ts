@@ -5,6 +5,7 @@ import type { OperationalAction, Transcript, VoiceReport } from "./reports";
 import type { LanguageCode } from "./language";
 import type { ExtractionPayload } from "./extraction";
 import type { PipelineStage } from "./reports";
+import type { Provenance } from "./provenance";
 
 /** Everything known about one voice report, as the UI consumes it. */
 export interface ReportDetail {
@@ -18,6 +19,8 @@ export interface ReportDetail {
   priority: Priority;
   /** Text the system spoke (or would speak) back to the agent. */
   confirmationPrompt: string | null;
+  /** Present when synthesized audio exists for the current prompt (served by /api/reports/:id/prompt-audio). */
+  promptAudio: { provenance: Provenance } | null;
 }
 
 export interface DashboardSummary {

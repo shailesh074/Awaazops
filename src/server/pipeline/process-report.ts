@@ -86,6 +86,21 @@ async function applyValidation(repo: OperationsRepository, stored: StoredReport,
 }
 
 /**
+ * Synthesizes the agent-facing prompt and stores the audio with the exact text it was made from.
+ * Never throws: a voice outage must not block operations — the prompt is still shown as text.
+ */
+async function speakPrompt(repo: OperationsRepository, reportId: string, text: string, language: LanguageCode): Promise<void> {
+  try {
+    const result = await getTtsProvider().synthesize(text, { language });
+    if (result.audio && result.mimeType) {
+      await repo.savePromptAudio(reportId, { data: result.audio, mimeType: result.mimeType, text, provenance: result.provenance });
+    }
+  } catch (err) {
+    console.warn(`[pipeline] ${reportId} TTS unavailable:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/**
  * Voice → Intelligence → Verification. Runs STT, reasoning and validation, then prepares the
  * confirmation prompt. Never executes an action: that requires `confirmReport`.
  */
@@ -168,11 +183,7 @@ export async function submitReport(input: SubmitInput, emit: (e: StageEvent) => 
     await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "VALIDATION_COMPLETED", before: null, after: { outcome: v.outcome }, createdAt: now() });
 
     // 4. Spoken prompt. Non-fatal: if speech synthesis fails the agent still gets the prompt as text.
-    try {
-      await timed("tts", timings, emit, () => getTtsProvider().synthesize(v.prompt, { language: input.language }));
-    } catch (err) {
-      console.warn(`[pipeline] ${id} TTS unavailable:`, err instanceof Error ? err.message : err);
-    }
+    await timed("tts", timings, emit, () => speakPrompt(repo, id, v.prompt, input.language));
     if (v.outcome === "VERIFIED") transition(stored, "AWAITING_CONFIRMATION");
   } catch (err) {
     stored.report.failureReason =
@@ -236,6 +247,8 @@ export async function editReport(
   stored.report.timings = [...stored.report.timings.filter((t) => t.stage !== "validation"), { stage: "validation", latencyMs: Math.round(performance.now() - t0) }];
   await applyValidation(repo, stored, v);
   if (v.outcome === "VERIFIED") transition(stored, "AWAITING_CONFIRMATION");
+  // The prompt changed with the edit; speak the new one.
+  await speakPrompt(repo, id, v.prompt, stored.report.language);
 
   await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_EDITED", before: { fields: agentProvided.map((f) => [f, before[f].value]) }, after: { fields: agentProvided.map((f) => [f, payload[f].value]), outcome: v.outcome }, createdAt: now() });
   await repo.saveReport(stored);

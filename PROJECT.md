@@ -255,6 +255,14 @@ Each step ends in a verifiable, demoable state before moving on.
    - Agent prompts in Hindi (Devanagari), Indian English and Hinglish (`prompts.ts`).
    - Live: Prisma "char auth do ek" → ORD-4821 → confirmation, end to end. 78 tests.
 7. **Timbre integration** — after verifying docs: voices, languages, output format.
+   ✅ implemented from docs.gnani.ai and **verified live on 2026-11-06** in all three languages.
+   - `src/server/providers/tts/gnani-timbre.ts`: `POST {base}/api/v1/tts/inference`, `timbre-v2.5`, MP3 64k/24 kHz
+     (~20–50 KB per prompt); voices Poorvi (`hi-en`), Kaveri (`en-IN`), Nalini (`hi-IN`) — configurable.
+   - `speakable.ts`: order numbers digit by digit, dates/times in spoken form per language (docs advise words).
+   - STT and TTS share one Gnani queue (one active request per key) with a single 429 retry.
+   - Prompt audio stored with the exact text it was made from; served at `/api/reports/:id/prompt-audio`;
+     re-synthesized after edits; auto-plays in the Agent Portal. TTS failure stays non-fatal (text shown).
+   - Live: Timbre 0.6–1.1 s per prompt; round trip TTS → Prisma reproduces the prompt almost verbatim.
 8. **Supabase** — schema, RLS, Auth, Storage, seed data, realtime dashboard.
 9. **End-to-end integration** — full flow on real providers, error and clarification paths.
 10. **Test, optimise, deploy** — lab benchmark run, latency tuning, Vercel deploy, demo script.
@@ -282,7 +290,11 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
       - No confidence/timestamps in responses, as documented; `request_id` always present.
 - [ ] Still open: accuracy on real Indian-accented and noisy field audio (needs human recordings), v3.0 `codemix`
       vs. v2.5 `en-IN` for Hinglish, max upload size.
-- [ ] Gnani Timbre v2.5: endpoint, auth, voices per language, output format (mp3/wav/pcm), latency, SSML support.
+- [x] Gnani Timbre v2.5 (docs.gnani.ai, 2026-11-06): `POST https://api.vachana.ai/api/v1/tts/inference`, JSON,
+      `X-API-Key-ID`; fields `text`, `model`, `voice`, `language` (`hi-IN`, `en-IN`, `hi-en`, …, `auto`), `speed`
+      0.85–1.15, `audio_config`; response is raw audio bytes; 42 voices with one preferred language each; no SSML on v2.5.
+      Live: Devanagari, English and Hinglish all synthesize correctly. (An earlier "No audio generated" result was
+      Git Bash mangling non-ASCII curl arguments on Windows — not a Gnani issue; test non-ASCII payloads from Node.)
 - [ ] Gnani credential access timeline and rate limits for the challenge.
 - [ ] Evon v3.3 availability and fit.
 - [x] LLM provider: Claude (Anthropic SDK), structured outputs supported. Swappable behind `ReasoningProvider`.
@@ -331,3 +343,8 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Unreadable spoken numbers return null, never a partial guess | A wrong order number is worse than a clarification question |
 | 2026-11-06 | Server-side refusal fallbacks enabled (`fallbacks: "default"`) | Recommended default for Opus 5.5; a declined transcript is retried on the fallback model |
 | 2026-11-06 | Agent prompts follow the report language (hi → Devanagari) | The agent hears the confirmation in the language they chose |
+| 2026-11-06 | Timbre REST (not SSE/WebSocket), MP3 64k | Prompts are one short sentence; MP3 keeps mobile downloads ~20–50 KB |
+| 2026-11-06 | Voices: Poorvi (hi-en), Kaveri (en-IN), Nalini (hi-IN) | The catalog's preferred-language match for each AwaazOps language |
+| 2026-11-06 | Display text and spoken text differ (`speakable`) | Screens show "4821"; the voice says it digit by digit, as the docs advise |
+| 2026-11-06 | Prompt audio is keyed to its exact text | Audio can never play a stale prompt after an edit |
+| 2026-11-06 | One shared Gnani request queue for STT and TTS | One key, one active request allowed |

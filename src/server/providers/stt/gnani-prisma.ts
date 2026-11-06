@@ -2,6 +2,7 @@ import "server-only";
 import type { LanguageCode } from "@/domain";
 import { getServerEnv } from "@/server/env";
 import { ProviderError } from "../errors";
+import { describeGnaniError, gnaniErrorCode, gnaniFetch } from "../gnani-shared";
 import type { AudioInput, SpeechToTextProvider, TranscribeOptions, TranscriptionResult } from "./types";
 
 /**
@@ -49,7 +50,6 @@ const ACCEPTED: Record<string, string> = {
 };
 
 const REQUEST_TIMEOUT_MS = 20_000;
-const RATE_LIMIT_RETRY_MS = 600;
 
 interface PrismaSuccess {
   success: true;
@@ -57,27 +57,6 @@ interface PrismaSuccess {
   transcript: string;
   model?: string;
   truncated?: boolean;
-}
-
-/** The API allows one in-flight request per key, so calls from this process are serialised. */
-let queue: Promise<unknown> = Promise.resolve();
-function serialised<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.then(fn, fn);
-  queue = run.catch(() => undefined);
-  return run;
-}
-
-function describeError(status: number, body: unknown): string {
-  const b = body as {
-    error?: { type?: string; message?: string } | string;
-    detail?: { error_code?: string; message?: string } | Array<{ msg?: string; loc?: unknown[] }>;
-    message?: string;
-  } | null;
-  if (b?.error && typeof b.error === "object") return `${b.error.type ?? "ERROR"}: ${b.error.message ?? ""}`.trim();
-  if (b?.detail && !Array.isArray(b.detail)) return `${b.detail.error_code ?? "ERROR"}: ${b.detail.message ?? ""}`.trim();
-  if (Array.isArray(b?.detail)) return `Validation error: ${b.detail.map((d) => d.msg).join("; ")}`;
-  if (typeof b?.error === "string") return `${b.error}${b.message ? `: ${b.message}` : ""}`;
-  return `HTTP ${status}`;
 }
 
 export class GnaniPrismaProvider implements SpeechToTextProvider {
@@ -121,25 +100,7 @@ export class GnaniPrismaProvider implements SpeechToTextProvider {
       });
 
     const started = performance.now();
-    const res = await serialised(async () => {
-      try {
-        let r = await send();
-        // One active request per key: a single short retry covers overlap with another instance.
-        if (r.status === 429) {
-          await new Promise((ok) => setTimeout(ok, RATE_LIMIT_RETRY_MS));
-          r = await send();
-        }
-        return r;
-      } catch (err) {
-        const timeout = err instanceof DOMException && err.name === "TimeoutError";
-        throw new ProviderError(
-          this.id,
-          timeout ? "TIMEOUT" : "UPSTREAM_ERROR",
-          timeout ? "Speech-to-text timed out." : "Could not reach the speech-to-text service.",
-          { cause: err },
-        );
-      }
-    });
+    const res = await gnaniFetch(this.id, send);
     const latencyMs = Math.round(performance.now() - started);
 
     let body: unknown = null;
@@ -150,16 +111,11 @@ export class GnaniPrismaProvider implements SpeechToTextProvider {
     }
 
     if (!res.ok) {
-      const detail = describeError(res.status, body);
-      const code =
-        res.status === 401 || res.status === 402 || res.status === 403
-          ? "NOT_CONFIGURED"
-          : res.status === 400 || res.status === 422
-            ? "UNSUPPORTED_INPUT"
-            : res.status === 504
-              ? "TIMEOUT"
-              : "UPSTREAM_ERROR";
-      throw new ProviderError(this.id, code, `Prisma request failed (${res.status}) — ${detail}`);
+      throw new ProviderError(
+        this.id,
+        gnaniErrorCode(res.status),
+        `Prisma request failed (${res.status}) — ${describeGnaniError(res.status, body)}`,
+      );
     }
 
     const ok = body as Partial<PrismaSuccess> | null;

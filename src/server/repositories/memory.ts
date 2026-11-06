@@ -2,12 +2,13 @@ import "server-only";
 import type { AuditEvent, OperationalAction, Order, ReportDetail } from "@/domain";
 import { AGENTS, ORDERS } from "@/mocks/fleet";
 import { AUDIT_EVENTS, REPORTS } from "@/mocks/reports";
-import type { OperationsRepository, StoredReport } from "./types";
+import type { OperationsRepository, StoredPromptAudio, StoredReport } from "./types";
 
 interface MemoryState {
   orders: Map<string, Order>;
   reports: Map<string, StoredReport>;
   actions: Map<string, OperationalAction>;
+  promptAudio: Map<string, StoredPromptAudio>;
   audit: AuditEvent[];
   seq: number;
   auditSeq: number;
@@ -32,6 +33,7 @@ function seed(): MemoryState {
     orders: new Map(ORDERS.map((o) => [o.id, structuredClone(o)])),
     reports,
     actions,
+    promptAudio: new Map(),
     audit: [...AUDIT_EVENTS].reverse(), // stored oldest → newest
     seq: 1042,
     auditSeq: 0,
@@ -44,6 +46,7 @@ function seed(): MemoryState {
  */
 const globalForStore = globalThis as unknown as { __awaazStore?: MemoryState };
 const state = (globalForStore.__awaazStore ??= seed());
+state.promptAudio ??= new Map(); // stores created by an older build during dev hot reload
 
 const clone = <T,>(v: T): T => structuredClone(v);
 
@@ -72,6 +75,7 @@ export class MemoryRepository implements OperationsRepository {
     const agent = AGENTS.find((a) => a.id === s.report.agentId);
     if (!agent) throw new Error(`Report ${s.report.id} references unknown agent`);
     const orderId = s.validation?.resolvedOrderId ?? null;
+    const audio = state.promptAudio.get(s.report.id);
     return clone({
       report: s.report,
       agent,
@@ -82,6 +86,8 @@ export class MemoryRepository implements OperationsRepository {
       action: s.actionId ? (state.actions.get(s.actionId) ?? null) : null,
       priority: s.priority,
       confirmationPrompt: s.confirmationPrompt,
+      // Only expose audio that was made from the prompt currently on the report.
+      promptAudio: audio && audio.text === s.confirmationPrompt ? { provenance: audio.provenance } : null,
     });
   }
 
@@ -105,6 +111,14 @@ export class MemoryRepository implements OperationsRepository {
 
   async saveAction(action: OperationalAction) {
     state.actions.set(action.id, clone(action));
+  }
+
+  async savePromptAudio(reportId: string, audio: StoredPromptAudio) {
+    state.promptAudio.set(reportId, { ...audio, data: audio.data.slice(0), provenance: clone(audio.provenance) });
+  }
+  async getPromptAudio(reportId: string) {
+    const a = state.promptAudio.get(reportId);
+    return a ? { ...a, data: a.data.slice(0), provenance: clone(a.provenance) } : null;
   }
 
   async appendAudit(event: Omit<AuditEvent, "id">) {

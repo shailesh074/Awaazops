@@ -121,6 +121,7 @@ export function buildReport(spec: ReportSpec): ReportDetail {
         : null,
     priority: spec.priority,
     confirmationPrompt: spec.prompt ?? spec.clarification ?? null,
+    promptAudio: null,
   };
 }
 
