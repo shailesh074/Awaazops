@@ -245,6 +245,15 @@ Each step ends in a verifiable, demoable state before moving on.
    - Lab: `POST /api/lab/transcribe` runs Prisma on uploaded/recorded samples → real transcript, WER, latency.
    - Verified end to end against a local stub implementing the documented contract (not Gnani).
 6. **Reasoning & validation** — LLM adapter, extraction schema, Reliability Engine with unit tests.
+   ✅ built and tested; ⏳ Claude not yet run live (no Anthropic key on this machine).
+   - `src/server/providers/llm/claude.ts`: Claude Opus 5.5 (`LLM_MODEL`), `low` effort (`LLM_EFFORT`), structured
+     output via `beta.messages.parse` + `betaZodOutputFormat`, cached static system prompt, refusal fallbacks
+     (`fallbacks: "default"`), refusal / truncation / parse failures → typed errors.
+   - The model returns **quotes and hints only** (`reasoning-schema.ts`). `normalise.ts` derives offsets, digits
+     (Hindi/Devanagari/English digit words, grouped digits, "double four") and IST times deterministically.
+     The mock emits the same shape, so both share one path.
+   - Agent prompts in Hindi (Devanagari), Indian English and Hinglish (`prompts.ts`).
+   - Live: Prisma "char auth do ek" → ORD-4821 → confirmation, end to end. 78 tests.
 7. **Timbre integration** — after verifying docs: voices, languages, output format.
 8. **Supabase** — schema, RLS, Auth, Storage, seed data, realtime dashboard.
 9. **End-to-end integration** — full flow on real providers, error and clarification paths.
@@ -276,7 +285,8 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 - [ ] Gnani Timbre v2.5: endpoint, auth, voices per language, output format (mp3/wav/pcm), latency, SSML support.
 - [ ] Gnani credential access timeline and rate limits for the challenge.
 - [ ] Evon v3.3 availability and fit.
-- [ ] LLM provider choice and its structured-output support.
+- [x] LLM provider: Claude (Anthropic SDK), structured outputs supported. Swappable behind `ReasoningProvider`.
+- [ ] Claude live quality on garbled/noisy Hinglish transcripts and its latency at `low` effort (needs a key).
 - [x] Next.js 16 conventions: v16.4.5 with Cache Components + Partial Prefetching on by default. Runtime /
       uncached data must sit inside `<Suspense>` or behind `connection()`; `proxy.ts` replaces middleware.
       Bundled docs live in `node_modules/next/dist/docs/` — read them before using a new API (see AGENTS.md).
@@ -316,3 +326,8 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Client converts to WAV instead of sending WebM | WebM is not a documented format; WAV works in every browser |
 | 2026-11-06 | Undocumented audio types are refused before calling the API | Never send requests outside the documented contract |
 | 2026-11-06 | Lab STT runs refuse on the mock provider | Scores over scripted transcripts would be meaningless |
+| 2026-11-06 | Reasoning: Claude Opus 5.5 at `low` effort, configurable | Short, latency-sensitive extraction; model and effort are env switches |
+| 2026-11-06 | LLM returns quotes + hints; code computes offsets, digits and dates | Models are unreliable at character counting and calendar math; deterministic code is testable |
+| 2026-11-06 | Unreadable spoken numbers return null, never a partial guess | A wrong order number is worse than a clarification question |
+| 2026-11-06 | Server-side refusal fallbacks enabled (`fallbacks: "default"`) | Recommended default for Opus 5.5; a declined transcript is retried on the fallback model |
+| 2026-11-06 | Agent prompts follow the report language (hi → Devanagari) | The agent hears the confirmation in the language they chose |

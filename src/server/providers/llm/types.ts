@@ -10,15 +10,15 @@ export interface ReasoningInput {
 
 export interface ReasoningResult {
   /**
-   * Raw, UNTRUSTED model output. The Reliability Engine parses it against `extractionPayloadSchema`
-   * and re-checks evidence spans; nothing downstream consumes this value directly.
+   * Raw, UNTRUSTED output in the `reasoningOutputSchema` shape (quotes + hints). The normaliser re-parses it
+   * and derives digits/offsets/dates; the validator re-checks every quote. Nothing consumes it directly.
    */
   raw: unknown;
   provenance: Provenance;
 }
 
 export interface ReasoningProvider {
-  readonly id: "llm" | "mock-llm";
+  readonly id: "claude" | "mock-llm";
   isConfigured(): boolean;
   extract(input: ReasoningInput): Promise<ReasoningResult>;
 }

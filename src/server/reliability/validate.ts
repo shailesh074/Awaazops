@@ -1,6 +1,7 @@
 import {
   extractionPayloadSchema,
   type ExtractionPayload,
+  type LanguageCode,
   type Order,
   type ValidationCheck,
   type ValidationCheckId,
@@ -9,7 +10,7 @@ import {
 import { CHECK_LABELS } from "@/lib/labels";
 import { canonicalOrderId, orderDigits, suggestOrder } from "./order-reference";
 import { DELIVERY_HOURS, MIN_TRANSCRIPT_CONFIDENCE, isActionAllowed, missingFields } from "./policy";
-import { CLARIFY, confirmationPrompt } from "./prompts";
+import { PROMPTS, confirmationPrompt } from "./prompts";
 
 export interface ValidateInput {
   /** Raw, untrusted reasoning output. */
@@ -23,6 +24,10 @@ export interface ValidateInput {
   orders: Order[];
   /** Fields the agent typed in an edit: grounded in the agent's explicit input, not the transcript. */
   agentProvided?: EvidenceField[];
+  /** Why upstream normalisation rejected the provider output (raw is then null). */
+  rawError?: string | null;
+  /** Language for agent-facing prompts. */
+  language?: LanguageCode;
 }
 
 export interface ValidateOutput {
@@ -77,6 +82,8 @@ function istHour(iso: string): number {
  * the LLM proposes, this decides.
  */
 export function validateExtraction(input: ValidateInput): ValidateOutput {
+  const language = input.language ?? "hi-en";
+  const CLARIFY = PROMPTS[language];
   const status = new Map<ValidationCheckId, [ValidationCheck["status"], string]>();
   const set = (id: ValidationCheckId, s: ValidationCheck["status"], detail: string) => status.set(id, [s, detail]);
   const finish = (outcome: ValidationOutcome, payload: ExtractionPayload | null, order: Order | null, prompt: string): ValidateOutput => ({
@@ -102,7 +109,8 @@ export function validateExtraction(input: ValidateInput): ValidateOutput {
   const parsed = extractionPayloadSchema.safeParse(input.raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    set("SCHEMA_VALID", "FAIL", `Output rejected: ${first?.path.join(".") || "root"} — ${first?.message ?? "invalid"}.`);
+    const why = input.rawError ?? `${first?.path.join(".") || "root"} — ${first?.message ?? "invalid"}`;
+    set("SCHEMA_VALID", "FAIL", `Output rejected: ${why}.`);
     return finish("NEEDS_CLARIFICATION", null, null, CLARIFY.unreadable);
   }
   set("SCHEMA_VALID", "PASS", "Structured output matches the extraction schema.");
@@ -201,5 +209,5 @@ export function validateExtraction(input: ValidateInput): ValidateOutput {
   if (missing.includes("notes")) return finish("NEEDS_CLARIFICATION", payload, null, CLARIFY.missingNotes);
   if (badTime) return finish("NEEDS_CLARIFICATION", payload, null, CLARIFY.invalidTime);
 
-  return finish("VERIFIED", payload, order, confirmationPrompt(payload, order));
+  return finish("VERIFIED", payload, order, confirmationPrompt(payload, order, language));
 }

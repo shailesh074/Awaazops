@@ -84,4 +84,17 @@ describe("report pipeline", () => {
     expect(r.order?.id).toBe("ORD-4907");
     expect(r.report.status).toBe("AWAITING_CONFIRMATION");
   });
+
+  it("reads spoken Hindi digits (live Prisma transcript, 2026-11-06)", async () => {
+    // Prisma returned "char auth do ek" for "chaar aath do ek" — the normaliser maps it to 4821.
+    const r = await submit("order char auth do ek customer phone nahi utha raha");
+    expect(r.extraction?.payload.orderReference.value).toBe("4821");
+    expect(r.order?.id).toBe("ORD-4821");
+    expect(r.report.status).toBe("AWAITING_CONFIRMATION");
+  });
+
+  it("answers in the agent's language", async () => {
+    const r = await submitReport({ agentId: AGENT, language: "en", audio: null, mockTranscript: "Boss 9134 wala order, customer ghar pe nahi hai." });
+    expect(r.validation?.clarificationQuestion).toBe("I couldn't find order 9134. Please say the order number again.");
+  });
 });

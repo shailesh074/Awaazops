@@ -19,7 +19,7 @@ const serverEnvSchema = z.object({
   // Provider selection. Defaults to mock so the UI can be built before credentials exist.
   AWAAZ_STT_PROVIDER: z.enum(["mock", "gnani-prisma"]).default("mock"),
   AWAAZ_TTS_PROVIDER: z.enum(["mock", "gnani-timbre"]).default("mock"),
-  AWAAZ_LLM_PROVIDER: z.enum(["mock", "llm"]).default("mock"),
+  AWAAZ_LLM_PROVIDER: z.enum(["mock", "claude"]).default("mock"),
 
   // Gnani — one key for all Vachana APIs, sent as `X-API-Key-ID` (docs.gnani.ai, verified 2026-11-06).
   GNANI_API_KEY: optionalString,
@@ -31,9 +31,11 @@ const serverEnvSchema = z.object({
   GNANI_STT_FORMAT: z.enum(["verbatim", "transcribe"]).default("transcribe"),
   GNANI_TIMBRE_BASE_URL: optionalString,
 
-  // LLM (provider TBD)
-  LLM_API_KEY: optionalString,
-  LLM_MODEL: optionalString,
+  // Reasoning LLM — Claude via the Anthropic SDK.
+  ANTHROPIC_API_KEY: optionalString,
+  LLM_MODEL: z.string().trim().min(1).default("claude-opus-5-5"),
+  /** Extraction is short and latency-sensitive; `low` effort keeps it fast. Raise if quality needs it. */
+  LLM_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("low"),
 
   // Supabase (wired in step 8)
   NEXT_PUBLIC_SUPABASE_URL: optionalString,

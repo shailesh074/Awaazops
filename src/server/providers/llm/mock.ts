@@ -1,64 +1,46 @@
 import "server-only";
+import type { ReasoningOutput } from "@/server/reliability/reasoning-schema";
 import type { ReasoningInput, ReasoningProvider, ReasoningResult } from "./types";
 
 /**
- * SIMULATED reasoning: transparent keyword rules, not a model. It emits the same raw shape the real
- * LLM will, so its output goes through exactly the same validation. Always marked simulated.
+ * SIMULATED reasoning: transparent keyword rules, not a model. It emits the same quote-and-hint shape
+ * the real LLM returns, so its output goes through exactly the same normaliser and validator.
  */
-type Span = { quote: string; start: number; end: number };
 
-function find(text: string, re: RegExp): (Span & { m: RegExpExecArray }) | null {
-  const m = re.exec(text);
-  return m ? { quote: m[0], start: m.index, end: m.index + m[0].length, m } : null;
+const NUMBER = String.raw`(?:\d{1,3}(?:,\d{3})+|\d{3,})`;
+const DIGIT_WORD = String.raw`(?:shunya|ek|do|teen|tin|chaa?r|paa?nch|chhe|chhah|saa?t|aath|auth|ath|nau|zero|one|two|three|four|five|six|seven|eight|nine)`;
+const PERIOD_HOUR = { subah: 0, dopahar: 12, shaam: 12, raat: 12 } as const;
+
+function find(text: string, re: RegExp): RegExpExecArray | null {
+  return re.exec(text);
 }
 
-const strip = (s: (Span & { m: RegExpExecArray }) | null): Span | null =>
-  s ? { quote: s.quote, start: s.start, end: s.end } : null;
+function timeHints(t: string): ReasoningOutput["time"] {
+  const none: ReasoningOutput["time"] = { quote: null, kind: null, dayOffset: null, weekday: null, startHour: null, startMinute: null, endHour: null, endMinute: null, confidence: 0 };
+  const to24 = (period: string | undefined, h: number) => {
+    const p = period?.toLowerCase() as keyof typeof PERIOD_HOUR | undefined;
+    if (p && p !== "subah" && h < 12 && !(p === "dopahar" && h >= 8)) return h + PERIOD_HOUR[p];
+    return h;
+  };
+  const day = (s: string | undefined) => (s?.toLowerCase().startsWith("kal") ? 1 : s?.toLowerCase().startsWith("aaj") ? 0 : null);
 
-const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-
-/** IST calendar date of `ref` shifted by `days`, at hh:mm, as an offset ISO string. */
-function istAt(ref: string, days: number, hh: number, mm = 0): string {
-  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ref));
-  const [y, m, d] = ymd.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-  return `${date}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+05:30`;
-}
-
-function to24(period: string | undefined, h: number): number {
-  const p = period?.toLowerCase();
-  if ((p === "shaam" || p === "raat") && h < 12) return h + 12;
-  if (p === "dopahar" && h < 8) return h + 12;
-  return h;
-}
-
-function resolveTime(text: string, ref: string) {
-  const dayOffset = (s: string | undefined) => (s?.toLowerCase().startsWith("kal") ? 1 : 0);
-
-  const between = find(text, /(kal\s+|aaj\s+)?(subah|dopahar|shaam|raat)?\s*(\d{1,2})\s*se\s*(\d{1,2})\s*(?:baje\s*)?ke\s*beech/i);
+  const between = find(t, /(kal\s+|aaj\s+)?(subah|dopahar|shaam|raat)?\s*(\d{1,2})\s*se\s*(\d{1,2})\s*(?:baje\s*)?ke\s*beech/i);
   if (between) {
-    const [, day, period, a, b] = between.m;
-    const off = dayOffset(day);
-    return { span: strip(between), value: { kind: "BETWEEN", start: istAt(ref, off, to24(period, +a)), end: istAt(ref, off, to24(period, +b)), spoken: between.quote } };
+    const [q, d, p, a, b] = between;
+    return { ...none, quote: q.trim(), kind: "BETWEEN", dayOffset: day(d), startHour: to24(p, +a), endHour: to24(p, +b), confidence: 0.8 };
   }
-  const at = find(text, /(kal\s+|aaj\s+)?(subah|dopahar|shaam|raat)\s*(\d{1,2})\s*baje(\s*ke\s*baad)?/i);
+  const at = find(t, /(kal\s+|aaj\s+)?(subah|dopahar|shaam|raat)\s*(\d{1,2})\s*baje(\s*ke\s*baad)?/i);
   if (at) {
-    const [, day, period, h, after] = at.m;
-    return { span: strip(at), value: { kind: after ? "AFTER" : "AT", start: istAt(ref, dayOffset(day), to24(period, +h)), end: null, spoken: at.quote } };
+    const [q, d, p, h, after] = at;
+    return { ...none, quote: q.trim(), kind: after ? "AFTER" : "AT", dayOffset: day(d), startHour: to24(p, +h), confidence: 0.8 };
   }
-  const kalSubah = find(text, /kal\s+subah/i);
-  if (kalSubah) return { span: strip(kalSubah), value: { kind: "BETWEEN", start: istAt(ref, 1, 9), end: istAt(ref, 1, 12), spoken: kalSubah.quote } };
-
-  const weekday = find(text, new RegExp(`\\b(${WEEKDAYS.join("|")})\\b`, "i"));
-  if (weekday) {
-    const today = new Date(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ref))).getUTCDay();
-    const target = WEEKDAYS.indexOf(weekday.m[1].toLowerCase());
-    const off = ((target - today + 7) % 7) || 7;
-    return { span: strip(weekday), value: { kind: "DATE_ONLY", start: istAt(ref, off, 9), end: istAt(ref, off, 21), spoken: weekday.quote } };
-  }
-  const kal = find(text, /\bkal\b/i);
-  if (kal) return { span: strip(kal), value: { kind: "DATE_ONLY", start: istAt(ref, 1, 9), end: istAt(ref, 1, 21), spoken: kal.quote } };
-  return null;
+  const kalSubah = find(t, /kal\s+subah/i);
+  if (kalSubah) return { ...none, quote: kalSubah[0], kind: "BETWEEN", dayOffset: 1, startHour: 9, endHour: 12, confidence: 0.7 };
+  const weekday = find(t, /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i);
+  if (weekday) return { ...none, quote: weekday[0], kind: "DATE_ONLY", weekday: weekday[1].toLowerCase() as ReasoningOutput["time"]["weekday"], confidence: 0.8 };
+  const kal = find(t, /\bkal\b/i);
+  if (kal) return { ...none, quote: kal[0], kind: "DATE_ONLY", dayOffset: 1, confidence: 0.7 };
+  return none;
 }
 
 export class MockReasoningProvider implements ReasoningProvider {
@@ -68,75 +50,62 @@ export class MockReasoningProvider implements ReasoningProvider {
     return true;
   }
 
-  async extract({ transcript: t, referenceTime }: ReasoningInput): Promise<ReasoningResult> {
+  async extract({ transcript: t }: ReasoningInput): Promise<ReasoningResult> {
     const started = performance.now();
 
-    // Prisma's `transcribe` format groups digits ("order 4,907"), so accept grouped numbers too.
-    // The quote keeps the transcript's exact text; the value is digits only.
-    const NUM = String.raw`(?:\d{1,3}(?:,\d{3})+|\d{3,})`;
     const order =
-      find(t, new RegExp(String.raw`order\s*(?:no\.?|number)?\s*#?\s*${NUM}`, "i")) ??
-      find(t, new RegExp(String.raw`\b${NUM}\b(?=\s*(?:ka|ke|ki|wala|wali|,|$))`, "i"));
-    const orderDigits = order ? (order.quote.match(new RegExp(NUM))?.[0].replace(/,/g, "") ?? null) : null;
+      find(t, new RegExp(String.raw`order\s*(?:no\.?|number)?\s*#?\s*(?:${NUMBER}|${DIGIT_WORD}(?:\s+${DIGIT_WORD}){2,})`, "i")) ??
+      find(t, new RegExp(String.raw`\b${NUMBER}\b(?=\s*(?:ka|ke|ki|wala|wali|,|$))`, "i"));
 
-    const unavailable = find(t, /ghar pe nahi|not at home|available nahi|phone nahi utha\w*|bahar gaye/i);
-    const address = find(t, /address\s*(?:galat|is wrong)|building hi nahi|galat location/i);
-    const damaged = find(t, /damaged|phata hua|refuse\w*|lene se mana/i);
-    const instruction = find(t, /reception pe chhod do|leave it at reception|gate number \d+ se aana/i);
-    const neighbour = find(t, /neighbou?r/i);
-    const time = resolveTime(t, referenceTime);
+    const q = (re: RegExp) => find(t, re)?.[0] ?? null;
+    const unavailable = q(/ghar pe nahi|not at home|available nahi|phone nahi utha\w*|bahar gaye/i);
+    const address = q(/address\s*(?:galat|is wrong)|building hi nahi|galat location/i);
+    const damaged = q(/damaged|phata hua|refuse\w*|lene se mana/i);
+    const instruction = q(/reception pe chhod do|leave it at reception|gate number \d+ se aana/i);
+    const neighbour = q(/neighbou?r/i);
+    const time = timeHints(t);
 
-    const issue = damaged
-      ? { value: "PACKAGE_UNDELIVERABLE", evidence: strip(damaged) }
+    const issue: ReasoningOutput["issue"] = damaged
+      ? { value: "PACKAGE_UNDELIVERABLE", quote: damaged, confidence: 0.8 }
       : address
-        ? { value: "WRONG_ADDRESS", evidence: strip(address) }
+        ? { value: "WRONG_ADDRESS", quote: address, confidence: 0.8 }
         : unavailable
-          ? { value: "CUSTOMER_UNAVAILABLE", evidence: strip(unavailable) }
+          ? { value: "CUSTOMER_UNAVAILABLE", quote: unavailable, confidence: 0.8 }
           : instruction
-            ? { value: "UNCLEAR_INSTRUCTIONS", evidence: strip(instruction) }
-            : time
-              ? { value: "RESCHEDULE_REQUEST", evidence: time.span }
-              : { value: null, evidence: null };
+            ? { value: "UNCLEAR_INSTRUCTIONS", quote: instruction, confidence: 0.8 }
+            : time.quote
+              ? { value: "RESCHEDULE_REQUEST", quote: time.quote, confidence: 0.7 }
+              : { value: null, quote: null, confidence: 0 };
 
-    const action = damaged
-      ? { value: "MARK_DELIVERY_FAILED", evidence: strip(damaged) }
+    const action: ReasoningOutput["requestedAction"] = damaged
+      ? { value: "MARK_DELIVERY_FAILED", quote: damaged, confidence: 0.75 }
       : address
-        ? { value: "FLAG_ADDRESS_ISSUE", evidence: strip(address) }
+        ? { value: "FLAG_ADDRESS_ISSUE", quote: address, confidence: 0.75 }
         : neighbour
-          ? { value: "ESCALATE_TO_DISPATCHER", evidence: strip(neighbour) }
+          ? { value: "ESCALATE_TO_DISPATCHER", quote: neighbour, confidence: 0.75 }
           : instruction
-            ? { value: "UPDATE_INSTRUCTIONS", evidence: strip(instruction) }
-            : time
-              ? { value: "RESCHEDULE", evidence: time.span }
+            ? { value: "UPDATE_INSTRUCTIONS", quote: instruction, confidence: 0.75 }
+            : time.quote
+              ? { value: "RESCHEDULE", quote: time.quote, confidence: 0.75 }
               : unavailable
-                ? { value: "MARK_CUSTOMER_UNAVAILABLE", evidence: strip(unavailable) }
-                : { value: null, evidence: null };
+                ? { value: "MARK_CUSTOMER_UNAVAILABLE", quote: unavailable, confidence: 0.75 }
+                : { value: null, quote: null, confidence: 0 };
 
-    const ambiguities: string[] = [];
-    if (!order) ambiguities.push("No order number found in transcript.");
-    if (!action.value) ambiguities.push("Could not tell what should be done.");
-
-    const raw = {
-      orderReference: { value: orderDigits, evidence: strip(order), confidence: order ? 0.9 : 0 },
-      issue: { ...issue, confidence: issue.value ? 0.8 : 0 },
-      requestedAction: { ...action, confidence: action.value ? 0.75 : 0 },
-      timeConstraint: time
-        ? { value: time.value, evidence: time.span, confidence: 0.8 }
-        : { value: null, evidence: null, confidence: 0 },
-      notes: instruction
-        ? { value: instruction.quote, evidence: strip(instruction), confidence: 0.85 }
-        : { value: null, evidence: null, confidence: 0 },
-      ambiguities,
+    const raw: ReasoningOutput = {
+      orderReference: { spoken: order?.[0] ?? null, confidence: order ? 0.9 : 0 },
+      issue,
+      requestedAction: action,
+      time,
+      notes: instruction ? { value: instruction, quote: instruction, confidence: 0.85 } : { value: null, quote: null, confidence: 0 },
+      ambiguities: [
+        ...(order ? [] : ["No order number found in transcript."]),
+        ...(action.value ? [] : ["Could not tell what should be done."]),
+      ],
     };
 
     return {
       raw,
-      provenance: {
-        provider: this.id,
-        simulated: true,
-        latencyMs: Math.round(performance.now() - started),
-        createdAt: new Date().toISOString(),
-      },
+      provenance: { provider: this.id, simulated: true, latencyMs: Math.round(performance.now() - started), createdAt: new Date().toISOString() },
     };
   }
 }

@@ -17,6 +17,7 @@ import { getReasoningProvider } from "@/server/providers/llm";
 import { getTtsProvider } from "@/server/providers/tts";
 import { ProviderError } from "@/server/providers/errors";
 import { validateExtraction, type ValidateOutput } from "@/server/reliability/validate";
+import { normaliseReasoning } from "@/server/reliability/normalise";
 import { applyAction } from "@/server/actions/apply-action";
 import { isActionAllowed } from "@/server/reliability/policy";
 import { ReportError } from "./errors";
@@ -144,18 +145,22 @@ export async function submitReport(input: SubmitInput, emit: (e: StageEvent) => 
     );
     transition(stored, "EXTRACTED");
 
-    // 3. Verification against the database
+    // 3. Normalise (quotes → offsets, spoken numbers → digits, hints → IST times), then verify
+    //    against the database. Both are deterministic; the model did none of this.
     const orders = await repo.listOrders();
-    const v = await timed("validation", timings, emit, async () =>
-      validateExtraction({
-        raw: reasoning.raw,
+    const v = await timed("validation", timings, emit, async () => {
+      const normalised = normaliseReasoning(reasoning.raw, transcription.text, referenceTime);
+      return validateExtraction({
+        raw: normalised.payload,
+        rawError: normalised.error,
         transcript: transcription.text,
         transcriptConfidence: transcription.confidence,
         agentId: input.agentId,
         referenceTime,
         orders,
-      }),
-    );
+        language: input.language,
+      });
+    });
     stored.extraction = v.payload
       ? { id: `${id}-X`, reportId: id, payload: v.payload, provenance: reasoning.provenance }
       : null;
@@ -226,6 +231,7 @@ export async function editReport(
     referenceTime: now(),
     orders: await repo.listOrders(),
     agentProvided,
+    language: stored.report.language,
   });
   stored.report.timings = [...stored.report.timings.filter((t) => t.stage !== "validation"), { stage: "validation", latencyMs: Math.round(performance.now() - t0) }];
   await applyValidation(repo, stored, v);
