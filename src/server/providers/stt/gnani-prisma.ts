@@ -1,30 +1,186 @@
 import "server-only";
+import type { LanguageCode } from "@/domain";
 import { getServerEnv } from "@/server/env";
-import { PENDING_VERIFICATION, ProviderError } from "../errors";
+import { ProviderError } from "../errors";
 import type { AudioInput, SpeechToTextProvider, TranscribeOptions, TranscriptionResult } from "./types";
 
 /**
- * Gnani Prisma v2.5 speech-to-text adapter.
+ * Gnani Prisma speech-to-text via the Vachana REST API.
  *
- * Deliberately unimplemented until verified against official docs. To complete (step 5):
- *  - auth scheme and headers
- *  - sync REST vs. streaming (WebSocket) API
- *  - accepted audio formats / sample rate → convert `audio.mimeType` here if needed
- *  - language code mapping from LanguageCode ("hi" | "en" | "hi-en")
- *  - response shape → map to TranscriptionResult (confidence/segments only if returned)
+ * Contract source: https://docs.gnani.ai/api/STT/speech-to-text and /api/introduction/quick-start
+ * (read 2026-11-06). Everything below is taken from those pages:
+ *  - POST {base}/stt/v3, multipart/form-data, header `X-API-Key-ID`
+ *  - fields: `audio_file` (required, ≤ 30 s), `language_code` (required), `model` (omit → prisma-v2.5),
+ *    `format` (`verbatim` | `transcribe`; v2.5 supports only these two)
+ *  - 200: `{ success, request_id, transcript, model, processing_time, end_to_end_latency, truncated?, output? }`
+ *    — no confidence or timestamps are documented, so none are reported.
+ *  - `transcript: ""` means no speech (not an error)
+ *  - formats: WAV, MP3, OGG, FLAC, AAC, M4A — WebM is NOT listed, so the client converts to WAV first
+ *  - only one active request per key (429 RATE_LIMITED otherwise)
  */
+
+export const PRISMA_MAX_DURATION_MS = 30_000;
+
+/**
+ * AwaazOps language → Prisma `language_code`.
+ * There is no dedicated Hinglish code. The docs state `en-IN` "accepts English-Hindi mixed audio and
+ * generates output in English (Latin script)", which is the right register for Hinglish field reports.
+ */
+export const PRISMA_LANGUAGE: Record<LanguageCode, string> = {
+  hi: "hi-IN",
+  en: "en-IN",
+  "hi-en": "en-IN",
+};
+
+/** MIME types for the documented formats (WAV, MP3, OGG, FLAC, AAC, M4A). */
+const ACCEPTED: Record<string, string> = {
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+  "audio/aac": "aac",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/m4a": "m4a",
+};
+
+const REQUEST_TIMEOUT_MS = 20_000;
+const RATE_LIMIT_RETRY_MS = 600;
+
+interface PrismaSuccess {
+  success: true;
+  request_id?: string;
+  transcript: string;
+  model?: string;
+  truncated?: boolean;
+}
+
+/** The API allows one in-flight request per key, so calls from this process are serialised. */
+let queue: Promise<unknown> = Promise.resolve();
+function serialised<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+function describeError(status: number, body: unknown): string {
+  const b = body as {
+    error?: { type?: string; message?: string } | string;
+    detail?: { error_code?: string; message?: string } | Array<{ msg?: string; loc?: unknown[] }>;
+    message?: string;
+  } | null;
+  if (b?.error && typeof b.error === "object") return `${b.error.type ?? "ERROR"}: ${b.error.message ?? ""}`.trim();
+  if (b?.detail && !Array.isArray(b.detail)) return `${b.detail.error_code ?? "ERROR"}: ${b.detail.message ?? ""}`.trim();
+  if (Array.isArray(b?.detail)) return `Validation error: ${b.detail.map((d) => d.msg).join("; ")}`;
+  if (typeof b?.error === "string") return `${b.error}${b.message ? `: ${b.message}` : ""}`;
+  return `HTTP ${status}`;
+}
+
 export class GnaniPrismaProvider implements SpeechToTextProvider {
   readonly id = "gnani-prisma" as const;
 
   isConfigured(): boolean {
-    const env = getServerEnv();
-    return Boolean(env.GNANI_API_KEY && env.GNANI_PRISMA_BASE_URL);
+    return Boolean(getServerEnv().GNANI_API_KEY);
   }
 
-  async transcribe(_audio: AudioInput, _options: TranscribeOptions): Promise<TranscriptionResult> {
-    if (!this.isConfigured()) {
-      throw new ProviderError(this.id, "NOT_CONFIGURED", "Gnani Prisma credentials are not set.");
+  async transcribe(audio: AudioInput, options: TranscribeOptions): Promise<TranscriptionResult> {
+    const env = getServerEnv();
+    if (!env.GNANI_API_KEY) throw new ProviderError(this.id, "NOT_CONFIGURED", "GNANI_API_KEY is not set.");
+
+    const mime = audio.mimeType.split(";")[0].trim().toLowerCase();
+    const ext = ACCEPTED[mime];
+    if (!ext) {
+      throw new ProviderError(
+        this.id,
+        "UNSUPPORTED_INPUT",
+        `Audio type "${audio.mimeType}" is not a documented Prisma format (WAV, MP3, OGG, FLAC, AAC, M4A).`,
+      );
     }
-    throw new ProviderError(this.id, "NOT_IMPLEMENTED", PENDING_VERIFICATION);
+    if (audio.data.byteLength === 0) throw new ProviderError(this.id, "UNSUPPORTED_INPUT", "Audio is empty.");
+    if (audio.durationMs && audio.durationMs > PRISMA_MAX_DURATION_MS + 500) {
+      throw new ProviderError(this.id, "UNSUPPORTED_INPUT", "Prisma accepts clips up to 30 seconds.");
+    }
+
+    const form = new FormData();
+    form.set("audio_file", new Blob([audio.data], { type: mime }), `report.${ext}`);
+    form.set("language_code", PRISMA_LANGUAGE[options.language]);
+    form.set("format", env.GNANI_STT_FORMAT);
+    if (env.GNANI_STT_MODEL !== "prisma-v2.5") form.set("model", env.GNANI_STT_MODEL);
+
+    const url = `${env.GNANI_API_BASE_URL.replace(/\/$/, "")}/stt/v3`;
+    const send = () =>
+      fetch(url, {
+        method: "POST",
+        headers: { "X-API-Key-ID": env.GNANI_API_KEY! },
+        body: form,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+
+    const started = performance.now();
+    const res = await serialised(async () => {
+      try {
+        let r = await send();
+        // One active request per key: a single short retry covers overlap with another instance.
+        if (r.status === 429) {
+          await new Promise((ok) => setTimeout(ok, RATE_LIMIT_RETRY_MS));
+          r = await send();
+        }
+        return r;
+      } catch (err) {
+        const timeout = err instanceof DOMException && err.name === "TimeoutError";
+        throw new ProviderError(
+          this.id,
+          timeout ? "TIMEOUT" : "UPSTREAM_ERROR",
+          timeout ? "Speech-to-text timed out." : "Could not reach the speech-to-text service.",
+          { cause: err },
+        );
+      }
+    });
+    const latencyMs = Math.round(performance.now() - started);
+
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // non-JSON body; handled below
+    }
+
+    if (!res.ok) {
+      const detail = describeError(res.status, body);
+      const code =
+        res.status === 401 || res.status === 402 || res.status === 403
+          ? "NOT_CONFIGURED"
+          : res.status === 400 || res.status === 422
+            ? "UNSUPPORTED_INPUT"
+            : res.status === 504
+              ? "TIMEOUT"
+              : "UPSTREAM_ERROR";
+      throw new ProviderError(this.id, code, `Prisma request failed (${res.status}) — ${detail}`);
+    }
+
+    const ok = body as Partial<PrismaSuccess> | null;
+    if (!ok || ok.success !== true || typeof ok.transcript !== "string") {
+      throw new ProviderError(this.id, "INVALID_RESPONSE", "Unexpected response shape from Prisma.");
+    }
+    if (ok.truncated) console.warn(`[prisma] transcript truncated (request ${ok.request_id ?? "unknown"})`);
+
+    const text = ok.transcript.trim();
+    return {
+      text,
+      confidence: null, // not provided by the API
+      segments: text ? [{ text, startMs: null, endMs: null, confidence: null }] : [],
+      provenance: {
+        provider: this.id,
+        simulated: false,
+        model: ok.model,
+        requestId: ok.request_id,
+        latencyMs,
+        createdAt: new Date().toISOString(),
+      },
+    };
   }
 }

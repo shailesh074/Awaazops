@@ -236,6 +236,13 @@ Each step ends in a verifiable, demoable state before moving on.
    - In-memory repository (`src/server/repositories/memory.ts`), per process, resets on restart.
    - Vitest: `npm test` (lifecycle, validation, order references, actions, lab metrics, full pipeline).
 5. **Prisma integration** — after verifying official docs: auth, audio format, sync vs. streaming, language codes.
+   ✅ implemented and contract-tested; ⏳ live verification pending a Gnani API key.
+   - Adapter: `src/server/providers/stt/gnani-prisma.ts`, REST `POST {GNANI_API_BASE_URL}/stt/v3`, built only from
+     docs.gnani.ai (read 2026-11-06). Unit tests pin the documented request/response/error shapes.
+   - Browser converts recordings to 16 kHz mono WAV (`src/lib/audio/to-wav.ts`) — WebM is not a documented format.
+   - Recording capped at 30 s (REST limit). Calls serialised per process (one active request per key), one retry on 429.
+   - Lab: `POST /api/lab/transcribe` runs Prisma on uploaded/recorded samples → real transcript, WER, latency.
+   - Verified end to end against a local stub implementing the documented contract (not Gnani).
 6. **Reasoning & validation** — LLM adapter, extraction schema, Reliability Engine with unit tests.
 7. **Timbre integration** — after verifying docs: voices, languages, output format.
 8. **Supabase** — schema, RLS, Auth, Storage, seed data, realtime dashboard.
@@ -251,8 +258,13 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 
 ## 11. Open Assumptions (to verify)
 
-- [ ] Gnani Prisma v2.5: endpoint, auth scheme, sync REST vs. streaming, accepted audio formats / sample
-      rates, max duration, supported language codes (hi-IN, en-IN, Hinglish/code-mixed?), confidence & timestamps in response.
+- [x] Gnani Prisma v2.5 (docs.gnani.ai, 2026-11-06): `POST https://api.vachana.ai/stt/v3`, header `X-API-Key-ID`,
+      multipart `audio_file` + `language_code` (+ `model`, `format`); REST ≤ 30 s; streaming at
+      `wss://api.vachana.ai/stt/v3/stream`; formats WAV/MP3/OGG/FLAC/AAC/M4A; 10 language codes incl. `hi-IN`,
+      `en-IN`; no Hinglish code (`en-IN` accepts English-Hindi mixed audio, Latin output); response has
+      `transcript`, `model`, `request_id` — **no confidence, no timestamps**; one active request per key.
+- [ ] Prisma live behaviour still to confirm with a real key: Hinglish quality on `en-IN` vs. v3.0 `codemix`,
+      whether `transcribe` turns spoken Hindi digits into numerals, real latency, max file size (not documented).
 - [ ] Gnani Timbre v2.5: endpoint, auth, voices per language, output format (mp3/wav/pcm), latency, SSML support.
 - [ ] Gnani credential access timeline and rate limits for the challenge.
 - [ ] Evon v3.3 availability and fit.
@@ -290,3 +302,9 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Agent identity resolved server-side (`getCurrentAgentId`), never from the request body | No spoofable actor before auth exists |
 | 2026-11-06 | `POST /api/reports` streams NDJSON stage events | Progress UI reflects real work, not timers |
 | 2026-11-06 | `@types/node` bumped to ^22 | Required by Vitest 5 peer range |
+| 2026-11-06 | Prisma REST (not streaming) for reports | Field reports are short; REST is simpler and documented ≤ 30 s |
+| 2026-11-06 | Hinglish → `en-IN`; Hindi → `hi-IN`; model omitted for v2.5 | Only documented options; v3.0 `codemix` is a config switch to evaluate |
+| 2026-11-06 | `format=transcribe` by default | Inverse text normalisation should turn spoken numbers into digits — to be confirmed live |
+| 2026-11-06 | Client converts to WAV instead of sending WebM | WebM is not a documented format; WAV works in every browser |
+| 2026-11-06 | Undocumented audio types are refused before calling the API | Never send requests outside the documented contract |
+| 2026-11-06 | Lab STT runs refuse on the mock provider | Scores over scripted transcripts would be meaningless |

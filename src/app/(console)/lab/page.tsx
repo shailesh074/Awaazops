@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { connection } from "next/server";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getProviderStatus } from "@/server/providers/status";
 import { Gauge, Hash, ListChecks, ShieldCheck, Timer, Waves } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DemoDataBanner } from "@/components/shared/demo-data-banner";
@@ -14,6 +18,13 @@ import { formatDateTime, formatMs, formatPercent } from "@/lib/format";
 import type { NoiseLevel } from "@/domain";
 
 export const metadata: Metadata = { title: "Intelligence Testing Lab" };
+
+/** Whether real STT is configured is runtime env, so this streams at request time. */
+async function LiveSamplePanel() {
+  await connection();
+  const stt = getProviderStatus().find((p) => p.stage === "stt");
+  return <AddSamplePanel sttLive={Boolean(stt && !stt.simulated && stt.configured)} />;
+}
 
 const FIELD_LABELS: Record<ScoredField, string> = {
   orderReference: "Order ID",
@@ -121,7 +132,9 @@ export default async function LabPage() {
           <LabWorkbench rows={rows} />
         </section>
         <Panel title="Add test sample" description="Upload or record a clip and label it">
-          <AddSamplePanel />
+          <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+            <LiveSamplePanel />
+          </Suspense>
         </Panel>
       </div>
     </div>

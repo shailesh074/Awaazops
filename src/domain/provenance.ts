@@ -22,6 +22,8 @@ export const provenanceSchema = z.object({
   simulated: z.boolean(),
   /** Provider-reported model / version string, when the provider returns one. */
   model: z.string().optional(),
+  /** Provider request ID, kept for support/audit when the provider returns one. */
+  requestId: z.string().optional(),
   latencyMs: z.number().nonnegative(),
   createdAt: z.iso.datetime(),
 });

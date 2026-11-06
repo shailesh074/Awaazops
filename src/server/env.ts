@@ -21,9 +21,14 @@ const serverEnvSchema = z.object({
   AWAAZ_TTS_PROVIDER: z.enum(["mock", "gnani-timbre"]).default("mock"),
   AWAAZ_LLM_PROVIDER: z.enum(["mock", "llm"]).default("mock"),
 
-  // Gnani (provisional)
+  // Gnani — one key for all Vachana APIs, sent as `X-API-Key-ID` (docs.gnani.ai, verified 2026-11-06).
   GNANI_API_KEY: optionalString,
-  GNANI_PRISMA_BASE_URL: optionalString,
+  /** Base URL for the Vachana API. Documented: https://api.vachana.ai */
+  GNANI_API_BASE_URL: z.url().default("https://api.vachana.ai"),
+  /** Prisma model. Omitted in the request for v2.5 (the documented default). */
+  GNANI_STT_MODEL: z.enum(["prisma-v2.5", "prisma-v3.0"]).default("prisma-v2.5"),
+  /** Output style: `verbatim` (raw) or `transcribe` (inverse text normalisation, e.g. spoken numbers → digits). */
+  GNANI_STT_FORMAT: z.enum(["verbatim", "transcribe"]).default("transcribe"),
   GNANI_TIMBRE_BASE_URL: optionalString,
 
   // LLM (provider TBD)

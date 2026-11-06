@@ -12,7 +12,8 @@ export interface RecordedAudio {
 }
 
 const PREFERRED_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
-export const MAX_RECORDING_MS = 60_000;
+// Prisma REST accepts clips up to 30 s (docs.gnani.ai). Longer reports need the streaming API.
+export const MAX_RECORDING_MS = 30_000;
 
 function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;

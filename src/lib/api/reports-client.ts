@@ -1,6 +1,7 @@
 "use client";
 
 import type { ActionType, LanguageCode, PipelineStage, ReportDetail } from "@/domain";
+import { toWav16kMono } from "@/lib/audio/to-wav";
 
 export type StageUpdate =
   | { stage: PipelineStage; state: "start" }
@@ -32,8 +33,20 @@ export async function submitReport(
 ): Promise<ReportDetail> {
   const form = new FormData();
   form.set("language", input.language);
-  if (input.audio) form.set("audio", input.audio, "report.webm");
-  if (input.durationMs) form.set("durationMs", String(Math.round(input.durationMs)));
+  if (input.audio) {
+    // Upload a documented format (WAV). If the browser can't decode its own recording, send it as-is
+    // and let the server report the format problem rather than failing silently here.
+    try {
+      const wav = await toWav16kMono(input.audio);
+      form.set("audio", wav.blob, "report.wav");
+      form.set("durationMs", String(Math.round(wav.durationMs)));
+    } catch {
+      form.set("audio", input.audio, "report");
+      if (input.durationMs) form.set("durationMs", String(Math.round(input.durationMs)));
+    }
+  } else if (input.durationMs) {
+    form.set("durationMs", String(Math.round(input.durationMs)));
+  }
   if (input.mockTranscript) form.set("mockTranscript", input.mockTranscript);
 
   const res = await fetch("/api/reports", { method: "POST", body: form });
