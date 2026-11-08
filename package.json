@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:seed:generate": "tsx --tsconfig tsconfig.json scripts/generate-seed.ts",
-    "db:provision": "tsx scripts/provision-user.ts"
+    "db:provision": "tsx scripts/provision-user.mts",
+    "db:migrate": "tsx scripts/db-migrate.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
@@ -37,6 +38,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "postgres": "^4.1.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

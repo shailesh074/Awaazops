@@ -12,8 +12,11 @@ const SUPABASE_BOOTSTRAP = `
   create role authenticated nologin;
   create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on tables to service_role;
-  alter default privileges in schema public grant all on sequences to service_role;
+  -- Supabase's real defaults: every new public table/sequence/function is fully granted to all three roles.
+  -- (Verified live 2026-11-08: an authenticated UPDATE without explicit revokes matched 0 rows instead of failing.)
+  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
   create schema auth;
   grant usage on schema auth to anon, authenticated, service_role;

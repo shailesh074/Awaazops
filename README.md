@@ -22,15 +22,16 @@ Real providers are switched on in `.env.local`: `AWAAZ_STT_PROVIDER=gnani-prisma
 
 ## Connect Supabase
 
-1. Create a Supabase project. Put its URL, anon key and service role key in `.env.local`, and set
-   `AWAAZ_DATA_BACKEND=supabase`.
-2. Apply the schema and demo data (Supabase CLI, linked to your project):
+1. Create a Supabase project. Put its URL, publishable (anon) key, secret (service role) key and the
+   **Session pooler** connection string (`SUPABASE_DB_URL`, with your database password and no `[ ]`) in
+   `.env.local`, and set `AWAAZ_DATA_BACKEND=supabase`.
+2. Apply the schema and demo data:
    ```bash
-   npx supabase link --project-ref <your-project-ref>
-   npx supabase db push
-   npx supabase db execute --file supabase/seed.sql
+   npm run db:migrate -- --seed
    ```
-   Or paste `supabase/migrations/*.sql` in order, then `supabase/seed.sql`, into the SQL editor.
+   Migrations are recorded in `supabase_migrations.schema_migrations`, so re-running is safe and the Supabase CLI
+   sees them as applied. (Alternatively paste `supabase/migrations/*.sql` in order, then `supabase/seed.sql`, into
+   the SQL editor.)
 3. Create users and give them a role. Set the password in the environment, not on the command line:
    ```bash
    AWAAZ_PROVISION_PASSWORD='…' npm run db:provision -- --email ravi@example.com --role agent --agent AG-101
@@ -67,4 +68,5 @@ refreshes sessions and redirects; it is not the security boundary.
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm test` | Vitest: unit, pipeline, provider-contract and database tests (Postgres via PGlite) |
 | `npm run db:seed:generate` | Regenerate `supabase/seed.sql` from the demo fixtures |
+| `npm run db:migrate` | Apply pending migrations to `SUPABASE_DB_URL` (`-- --seed` also loads demo data once) |
 | `npm run db:provision` | Create/update a user and set their role (see above) |

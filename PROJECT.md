@@ -264,7 +264,14 @@ Each step ends in a verifiable, demoable state before moving on.
      re-synthesized after edits; auto-plays in the Agent Portal. TTS failure stays non-fatal (text shown).
    - Live: Timbre 0.6–1.1 s per prompt; round trip TTS → Prisma reproduces the prompt almost verbatim.
 8. **Supabase** — schema, RLS, Auth, Storage, seed data, realtime dashboard.
-   ✅ built and tested against real Postgres (PGlite); ⏳ not yet run against a Supabase project (none connected).
+   ✅ built, tested on PGlite, and **verified live on Supabase on 2026-11-08** (Postgres 17.11, Tokyo region):
+   migrations + seed applied via `npm run db:migrate`; RLS with real agent/dispatcher sessions (4 vs 22 orders,
+   anon denied); role redirects; a live Prisma → verify → Timbre report stored in Postgres and Storage; atomic
+   confirm with the full audit chain; 409 on re-confirm; 404 on another agent's report. Login *form* not yet
+   exercised live (browser automation blocked) — the session it creates is the one tested above.
+   - Live finding: Supabase grants INSERT/UPDATE/DELETE on new tables to anon/authenticated by default. RLS still
+     blocked writes (0 rows), but migration 003 now revokes them so writes fail with "permission denied", and the
+     PGlite harness reproduces Supabase's real default grants (verified: without 003 the tests fail).
    - `supabase/migrations/`: schema with CHECK constraints mirroring the domain, RLS on every table
      (dispatchers read all, agents their own, nobody writes directly), append-only audit (trigger), private Storage
      buckets, transactional write functions (`save_report`, `append_audit`, `commit_confirmed_action` with an
@@ -318,7 +325,7 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 - [ ] Vercel plan limits: request body size (~4.5 MB) and function duration → audio may need direct-to-Storage upload.
 - [x] Auth model: Supabase Auth email/password; `app_metadata.role` = agent | dispatcher (+ `agent_id`), set by
       `npm run db:provision` with the service role.
-- [ ] Supabase project not yet connected: migrations, auth flow and storage still need a live run.
+- [x] Supabase connected and verified live (2026-11-08). Remaining: realtime dashboard, lab run persistence.
 - [ ] Order ID format in seed data (e.g. numeric `4821` spoken, stored as `ORD-4821`).
 
 ## 12. Decision Log
@@ -371,3 +378,5 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Pipeline responses strip orders not assigned to the acting agent | Service-role reads bypass RLS; an agent must never receive a colleague's customer data |
 | 2026-11-06 | Database tests on PGlite with Supabase's auth/roles recreated | Real Postgres semantics (RLS, triggers, plpgsql) without Docker |
 | 2026-11-06 | Blank `KEY=` env lines are treated as unset | A blank line must not break startup |
+| 2026-11-08 | Explicitly revoke client write privileges (migration 003) | Supabase's default grants are permissive; grants + RLS are two independent barriers |
+| 2026-11-08 | Own migration runner (`db:migrate`) writing the CLI's migrations table | Works without Docker or `supabase link`; stays compatible with `supabase db push` |
