@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { BrandLockup } from "@/components/shared/brand-mark";
 import { ConsoleNav, ConsoleNavLinks } from "@/components/layout/console-nav";
 import { ConsoleMobileNav } from "@/components/layout/console-mobile-nav";
+import { ViewerMenu } from "@/components/layout/viewer-menu";
 
 /** Desktop-first shell for the Operations Dashboard and Intelligence Testing Lab. */
 export default function ConsoleLayout({ children }: LayoutProps<"/">) {
@@ -16,6 +17,11 @@ export default function ConsoleLayout({ children }: LayoutProps<"/">) {
         <Suspense fallback={<ConsoleNavLinks pathname={null} />}>
           <ConsoleNav />
         </Suspense>
+        <div className="mt-auto border-t border-sidebar-border px-2.5 pt-3">
+          <Suspense fallback={null}>
+            <ViewerMenu />
+          </Suspense>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -24,6 +30,11 @@ export default function ConsoleLayout({ children }: LayoutProps<"/">) {
           <Link href="/">
             <BrandLockup />
           </Link>
+          <div className="ml-auto">
+            <Suspense fallback={null}>
+              <ViewerMenu compact />
+            </Suspense>
+          </div>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
           {children}

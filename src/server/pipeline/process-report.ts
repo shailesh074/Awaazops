@@ -11,7 +11,7 @@ import {
   type ReportStatus,
   type StageTiming,
 } from "@/domain";
-import { getRepository, type OperationsRepository, type StoredReport } from "@/server/repositories";
+import { getRepository, OrderChangedError, type OperationsRepository, type StoredReport } from "@/server/repositories";
 import { getSttProvider, type AudioInput } from "@/server/providers/stt";
 import { getReasoningProvider } from "@/server/providers/llm";
 import { getTtsProvider } from "@/server/providers/tts";
@@ -86,6 +86,17 @@ async function applyValidation(repo: OperationsRepository, stored: StoredReport,
 }
 
 /**
+ * What the acting agent may see of a report. The pipeline reads with the service role (RLS bypassed), so
+ * it must not hand back another agent's order — e.g. a report REJECTED because the spoken order belongs
+ * to a colleague still resolves to that order, whose customer details are not this agent's to see.
+ */
+export function agentView(detail: ReportDetail | null, agentId: string): ReportDetail {
+  if (!detail) throw new ReportError("NOT_FOUND", "Report not found.");
+  if (detail.order && detail.order.assignedAgentId !== agentId) return { ...detail, order: null };
+  return detail;
+}
+
+/**
  * Synthesizes the agent-facing prompt and stores the audio with the exact text it was made from.
  * Never throws: a voice outage must not block operations — the prompt is still shown as text.
  */
@@ -132,6 +143,14 @@ export async function submitReport(input: SubmitInput, emit: (e: StageEvent) => 
     confirmationPrompt: null,
   };
   const id = stored.report.id;
+  // Keep the original recording as evidence. Non-fatal: a storage outage must not block the report.
+  if (input.audio && input.audio.data.byteLength > 0) {
+    try {
+      stored.report.audioPath = await repo.saveRecording(id, input.agentId, { data: input.audio.data, mimeType: input.audio.mimeType });
+    } catch (err) {
+      console.warn(`[pipeline] ${id} recording not stored:`, err instanceof Error ? err.message : err);
+    }
+  }
   await repo.saveReport(stored);
   await repo.appendAudit({ actorId: input.agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_SUBMITTED", before: null, after: { language: input.language, audioBytes: input.audio?.data.byteLength ?? 0 }, createdAt });
 
@@ -194,7 +213,7 @@ export async function submitReport(input: SubmitInput, emit: (e: StageEvent) => 
   }
 
   await repo.saveReport(stored);
-  return (await repo.getReport(id))!;
+  return agentView(await repo.getReport(id), input.agentId);
 }
 
 async function loadOwned(repo: OperationsRepository, id: string, agentId: string): Promise<StoredReport> {
@@ -252,7 +271,7 @@ export async function editReport(
 
   await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_EDITED", before: { fields: agentProvided.map((f) => [f, before[f].value]) }, after: { fields: agentProvided.map((f) => [f, payload[f].value]), outcome: v.outcome }, createdAt: now() });
   await repo.saveReport(stored);
-  return (await repo.getReport(id))!;
+  return agentView(await repo.getReport(id), agentId);
 }
 
 /**
@@ -272,32 +291,46 @@ export async function confirmReport(id: string, agentId: string): Promise<Report
 
   transition(stored, "CONFIRMED");
   const confirmedAt = now();
+  await repo.saveReport(stored);
   await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "ACTION_CONFIRMED", before: { status: "AWAITING_CONFIRMATION" }, after: { status: "CONFIRMED", action }, createdAt: confirmedAt });
+
+  const fail = async (reason: string) => {
+    transition(stored, "FAILED");
+    stored.report.failureReason = reason;
+    await repo.saveReport(stored);
+    await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "PIPELINE_FAILED", before: null, after: { reason }, createdAt: now() });
+    return agentView(await repo.getReport(id), agentId);
+  };
 
   const order = await repo.getOrder(orderId);
   if (!order || order.assignedAgentId !== agentId || !isActionAllowed(action, order.status)) {
-    transition(stored, "FAILED");
-    stored.report.failureReason = `Order ${orderId} changed before confirmation; nothing was updated.`;
-    await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "PIPELINE_FAILED", before: null, after: { reason: stored.report.failureReason }, createdAt: now() });
-    await repo.saveReport(stored);
-    return (await repo.getReport(id))!;
+    return fail(`Order ${orderId} changed before confirmation; nothing was updated.`);
   }
 
   const t0 = performance.now();
   const executedAt = now();
   const applied = applyAction(order, action, payload, executedAt);
-  await repo.updateOrder(applied.order);
   const actionId = `${id}-A`;
-  await repo.saveAction({ id: actionId, reportId: id, orderId, type: action, payload: applied.actionPayload, status: "EXECUTED", confirmedBy: agentId, confirmedAt, executedAt });
-  stored.actionId = actionId;
-  stored.report.timings = [...stored.report.timings, { stage: "execution", latencyMs: Math.round(performance.now() - t0) }];
-  transition(stored, "EXECUTED");
-
-  await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "ACTION", entityId: actionId, reportId: id, event: "ACTION_EXECUTED", before: null, after: { type: action, ...applied.actionPayload }, createdAt: executedAt });
-  await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "ORDER", entityId: orderId, reportId: id, event: "ORDER_UPDATED", before: { status: order.status, instructions: order.instructions, slotStart: order.slotStart, slotEnd: order.slotEnd }, after: { status: applied.order.status, instructions: applied.order.instructions, slotStart: applied.order.slotStart, slotEnd: applied.order.slotEnd }, createdAt: executedAt });
-
-  await repo.saveReport(stored);
-  return (await repo.getReport(id))!;
+  const timings = [...stored.report.timings, { stage: "execution" as const, latencyMs: Math.round(performance.now() - t0) }];
+  try {
+    // One atomic step: order update guarded by its last-seen version, action record, EXECUTED, audit.
+    await repo.commitConfirmedAction({
+      reportId: id,
+      timings,
+      executedAt,
+      expectedOrderUpdatedAt: order.updatedAt,
+      order: applied.order,
+      action: { id: actionId, reportId: id, orderId, type: action, payload: applied.actionPayload, status: "EXECUTED", confirmedBy: agentId, confirmedAt, executedAt },
+      audit: [
+        { actorId: "system", actorRole: "SYSTEM", entity: "ACTION", entityId: actionId, reportId: id, event: "ACTION_EXECUTED", before: null, after: { type: action, ...applied.actionPayload }, createdAt: executedAt },
+        { actorId: "system", actorRole: "SYSTEM", entity: "ORDER", entityId: orderId, reportId: id, event: "ORDER_UPDATED", before: { status: order.status, instructions: order.instructions, slotStart: order.slotStart, slotEnd: order.slotEnd }, after: { status: applied.order.status, instructions: applied.order.instructions, slotStart: applied.order.slotStart, slotEnd: applied.order.slotEnd }, createdAt: executedAt },
+      ],
+    });
+  } catch (err) {
+    if (err instanceof OrderChangedError) return fail(`Order ${orderId} changed before confirmation; nothing was updated.`);
+    throw err;
+  }
+  return agentView(await repo.getReport(id), agentId);
 }
 
 export async function rejectReport(id: string, agentId: string): Promise<ReportDetail> {
@@ -309,5 +342,5 @@ export async function rejectReport(id: string, agentId: string): Promise<ReportD
   transition(stored, "REJECTED");
   await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_REJECTED", before: { status: from }, after: { status: "REJECTED" }, createdAt: now() });
   await repo.saveReport(stored);
-  return (await repo.getReport(id))!;
+  return agentView(await repo.getReport(id), agentId);
 }

@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DemoDataBanner } from "@/components/shared/demo-data-banner";
 import { EvidenceInspector } from "@/components/shared/evidence-inspector";
 import { JsonView } from "@/components/shared/json-view";
+import { ClipPlayer } from "@/components/audio/clip-player";
 import { Panel } from "@/components/shared/panel";
 import { ProviderBadge } from "@/components/shared/provider-badge";
 import { OrderStatusPill, PriorityPill, ReportStatusPill } from "@/components/shared/status-pill";
@@ -94,6 +95,12 @@ async function ExceptionDetail({ id }: { id: string }) {
               description="Hover a field to see the words it was extracted from"
               actions={<ProviderBadge provenance={extraction.provenance} />}
             >
+              {report.audioPath ? (
+                <div className="mb-4 rounded-lg border bg-background/60 p-3">
+                  <p className="mb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Agent recording</p>
+                  <ClipPlayer url={`/api/reports/${encodeURIComponent(report.id)}/recording`} durationMs={report.audioDurationMs ?? 0} />
+                </div>
+              ) : null}
               <Tabs defaultValue="fields">
                 <TabsList className="mb-4">
                   <TabsTrigger value="fields">Fields</TabsTrigger>

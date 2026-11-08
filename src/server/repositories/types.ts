@@ -8,6 +8,7 @@ import type {
   Priority,
   Provenance,
   ReportDetail,
+  StageTiming,
   Transcript,
   ValidationResult,
   VoiceReport,
@@ -32,9 +33,35 @@ export interface StoredPromptAudio {
   provenance: Provenance;
 }
 
+export interface StoredAudio {
+  data: ArrayBuffer;
+  mimeType: string;
+}
+
+/** Everything that changes when a confirmed action executes — applied atomically. */
+export interface ConfirmedActionCommit {
+  reportId: string;
+  timings: StageTiming[];
+  executedAt: string;
+  action: OperationalAction;
+  /** The order as it should be after the action. */
+  order: Order;
+  /** The order's `updatedAt` when it was read; the commit fails if it changed since. */
+  expectedOrderUpdatedAt: string;
+  audit: Array<Omit<AuditEvent, "id">>;
+}
+
+/** The order was modified between verification and execution; nothing was written. */
+export class OrderChangedError extends Error {
+  constructor(orderId: string) {
+    super(`Order ${orderId} changed before the action could be applied.`);
+    this.name = "OrderChangedError";
+  }
+}
+
 /**
- * Persistence boundary. The in-memory implementation is used until Supabase lands (step 8);
- * the Supabase implementation will satisfy the same interface. All methods are async for that reason.
+ * Persistence boundary. Implementations: in-memory (demo) and Supabase. All methods are async.
+ * Read methods respect the caller's visibility when the repository is user-scoped (Supabase RLS).
  */
 export interface OperationsRepository {
   readonly kind: "memory" | "supabase";
@@ -44,7 +71,6 @@ export interface OperationsRepository {
 
   listOrders(): Promise<Order[]>;
   getOrder(id: string): Promise<Order | null>;
-  updateOrder(order: Order): Promise<void>;
 
   listReports(): Promise<ReportDetail[]>;
   getReport(id: string): Promise<ReportDetail | null>;
@@ -52,11 +78,16 @@ export interface OperationsRepository {
   saveReport(stored: StoredReport): Promise<void>;
   nextReportId(): Promise<string>;
 
-  saveAction(action: OperationalAction): Promise<void>;
+  /** Atomically applies a confirmed action. Throws OrderChangedError if the order moved on. */
+  commitConfirmedAction(commit: ConfirmedActionCommit): Promise<void>;
 
-  /** Audio for the report's current prompt (Supabase Storage in step 8). */
+  /** Audio for the report's current prompt. */
   savePromptAudio(reportId: string, audio: StoredPromptAudio): Promise<void>;
   getPromptAudio(reportId: string): Promise<StoredPromptAudio | null>;
+
+  /** The agent's original recording; returns the storage path recorded on the report. */
+  saveRecording(reportId: string, agentId: string, audio: StoredAudio): Promise<string>;
+  getRecording(path: string): Promise<StoredAudio | null>;
 
   /** Append-only. */
   appendAudit(event: Omit<AuditEvent, "id">): Promise<AuditEvent>;

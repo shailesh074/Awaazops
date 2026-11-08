@@ -4,6 +4,7 @@ import { getSttProvider } from "@/server/providers/stt";
 import { ProviderError } from "@/server/providers/errors";
 import { ReportError } from "@/server/pipeline/errors";
 import { errorResponse } from "@/server/http";
+import { canDispatch, requireViewerApi } from "@/server/auth/session";
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
@@ -14,6 +15,8 @@ const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
  */
 export async function POST(request: Request) {
   try {
+    const viewer = await requireViewerApi();
+    if (!canDispatch(viewer)) throw new ReportError("FORBIDDEN", "The Testing Lab is for dispatchers.");
     const stt = getSttProvider();
     if (stt.id === "mock-stt") {
       throw new ReportError("INVALID_STATE", "Speech-to-text is simulated. Configure Gnani Prisma to run lab samples.");

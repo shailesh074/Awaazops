@@ -44,20 +44,32 @@ const serverEnvSchema = z.object({
   /** Extraction is short and latency-sensitive; `low` effort keeps it fast. Raise if quality needs it. */
   LLM_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("low"),
 
-  // Supabase (wired in step 8)
+  // Data backend: "memory" = demo store, no sign-in; "supabase" = Postgres + Auth + Storage.
+  AWAAZ_DATA_BACKEND: z.enum(["memory", "supabase"]).default("memory"),
   NEXT_PUBLIC_SUPABASE_URL: optionalString,
+  /** Public by design (RLS protects data). Supabase also calls this the publishable key. */
   NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
+  /** Server-only. Bypasses RLS — used solely by the server pipeline and admin scripts. */
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
+}).superRefine((env, ctx) => {
+  if (env.AWAAZ_DATA_BACKEND !== "supabase") return;
+  for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"] as const) {
+    if (!env[key]) ctx.addIssue({ code: "custom", path: [key], message: "required when AWAAZ_DATA_BACKEND=supabase" });
+  }
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
+
+export const isSupabaseBackend = () => getServerEnv().AWAAZ_DATA_BACKEND === "supabase";
 
 let cached: ServerEnv | undefined;
 
 /** Parsed lazily so a misconfiguration fails at the first server call with a clear message. */
 export function getServerEnv(): ServerEnv {
   if (cached) return cached;
-  const parsed = serverEnvSchema.safeParse(process.env);
+  // A blank `KEY=` line in an env file means "not set", so defaults apply instead of failing validation.
+  const raw = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+  const parsed = serverEnvSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid server environment — ${issues}`);

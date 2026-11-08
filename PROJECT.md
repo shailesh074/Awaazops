@@ -264,6 +264,19 @@ Each step ends in a verifiable, demoable state before moving on.
      re-synthesized after edits; auto-plays in the Agent Portal. TTS failure stays non-fatal (text shown).
    - Live: Timbre 0.6–1.1 s per prompt; round trip TTS → Prisma reproduces the prompt almost verbatim.
 8. **Supabase** — schema, RLS, Auth, Storage, seed data, realtime dashboard.
+   ✅ built and tested against real Postgres (PGlite); ⏳ not yet run against a Supabase project (none connected).
+   - `supabase/migrations/`: schema with CHECK constraints mirroring the domain, RLS on every table
+     (dispatchers read all, agents their own, nobody writes directly), append-only audit (trigger), private Storage
+     buckets, transactional write functions (`save_report`, `append_audit`, `commit_confirmed_action` with an
+     optimistic-concurrency guard). `supabase/seed.sql` is generated from the demo fixtures.
+   - `SupabaseRepository` behind the same interface as the memory store; pages read with the user's session
+     (RLS), the pipeline writes with the service role after authorising the user.
+   - Supabase Auth: email/password `/login`, roles in `app_metadata`, `getClaims()`-verified viewer, page and
+     API guards, session-refreshing `proxy.ts`. Demo mode (`AWAAZ_DATA_BACKEND=memory`) is unchanged.
+   - Agent recordings stored as evidence; playable in the exception inspector.
+   - 18 database tests: RLS per role (with a control test), write denial, append-only audit, atomic confirm and
+     its concurrency guard, and a full fixture → seed → Postgres → mapping round trip.
+   - Not done: realtime dashboard updates (pages refresh per request), lab run persistence.
 9. **End-to-end integration** — full flow on real providers, error and clarification paths.
 10. **Test, optimise, deploy** — lab benchmark run, latency tuning, Vercel deploy, demo script.
 
@@ -303,7 +316,9 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
       uncached data must sit inside `<Suspense>` or behind `connection()`; `proxy.ts` replaces middleware.
       Bundled docs live in `node_modules/next/dist/docs/` — read them before using a new API (see AGENTS.md).
 - [ ] Vercel plan limits: request body size (~4.5 MB) and function duration → audio may need direct-to-Storage upload.
-- [ ] Auth model for the demo: agents and dispatchers as Supabase Auth users with roles.
+- [x] Auth model: Supabase Auth email/password; `app_metadata.role` = agent | dispatcher (+ `agent_id`), set by
+      `npm run db:provision` with the service role.
+- [ ] Supabase project not yet connected: migrations, auth flow and storage still need a live run.
 - [ ] Order ID format in seed data (e.g. numeric `4821` spoken, stored as `ORD-4821`).
 
 ## 12. Decision Log
@@ -348,3 +363,11 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Display text and spoken text differ (`speakable`) | Screens show "4821"; the voice says it digit by digit, as the docs advise |
 | 2026-11-06 | Prompt audio is keyed to its exact text | Audio can never play a stale prompt after an edit |
 | 2026-11-06 | One shared Gnani request queue for STT and TTS | One key, one active request allowed |
+| 2026-11-06 | `AWAAZ_DATA_BACKEND` switch; memory remains the default | The app keeps working before a database exists |
+| 2026-11-06 | Reads under the user's session (RLS); writes via service role + SQL functions | Defence in depth: a bug in a page cannot widen what a user sees |
+| 2026-11-06 | Roles in `app_metadata`, not a profiles table | Present in the JWT (RLS, proxy, server all read the same claim); users cannot edit it |
+| 2026-11-06 | Confirm executes in one SQL transaction with an order-version guard | No partial updates; no executing against an order that changed after verification |
+| 2026-11-06 | `validation.resolvedOrderId` is recorded whatever the outcome | A refused order is "not yours", not "not found"; execution is gated by report status |
+| 2026-11-06 | Pipeline responses strip orders not assigned to the acting agent | Service-role reads bypass RLS; an agent must never receive a colleague's customer data |
+| 2026-11-06 | Database tests on PGlite with Supabase's auth/roles recreated | Real Postgres semantics (RLS, triggers, plpgsql) without Docker |
+| 2026-11-06 | Blank `KEY=` env lines are treated as unset | A blank line must not break startup |

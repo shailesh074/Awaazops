@@ -2,13 +2,21 @@ import "server-only";
 import type { AuditEvent, OperationalAction, Order, ReportDetail } from "@/domain";
 import { AGENTS, ORDERS } from "@/mocks/fleet";
 import { AUDIT_EVENTS, REPORTS } from "@/mocks/reports";
-import type { OperationsRepository, StoredPromptAudio, StoredReport } from "./types";
+import {
+  OrderChangedError,
+  type ConfirmedActionCommit,
+  type OperationsRepository,
+  type StoredAudio,
+  type StoredPromptAudio,
+  type StoredReport,
+} from "./types";
 
 interface MemoryState {
   orders: Map<string, Order>;
   reports: Map<string, StoredReport>;
   actions: Map<string, OperationalAction>;
   promptAudio: Map<string, StoredPromptAudio>;
+  recordings: Map<string, StoredAudio>;
   audit: AuditEvent[];
   seq: number;
   auditSeq: number;
@@ -34,6 +42,7 @@ function seed(): MemoryState {
     reports,
     actions,
     promptAudio: new Map(),
+    recordings: new Map(),
     audit: [...AUDIT_EVENTS].reverse(), // stored oldest → newest
     seq: 1042,
     auditSeq: 0,
@@ -46,7 +55,9 @@ function seed(): MemoryState {
  */
 const globalForStore = globalThis as unknown as { __awaazStore?: MemoryState };
 const state = (globalForStore.__awaazStore ??= seed());
-state.promptAudio ??= new Map(); // stores created by an older build during dev hot reload
+// Stores created by an older build survive dev hot reloads; add maps introduced since.
+state.promptAudio ??= new Map();
+state.recordings ??= new Map();
 
 const clone = <T,>(v: T): T => structuredClone(v);
 
@@ -65,10 +76,6 @@ export class MemoryRepository implements OperationsRepository {
   }
   async getOrder(id: string) {
     return clone(state.orders.get(id) ?? null);
-  }
-  async updateOrder(order: Order) {
-    if (!state.orders.has(order.id)) throw new Error(`Unknown order ${order.id}`);
-    state.orders.set(order.id, clone(order));
   }
 
   private toDetail(s: StoredReport): ReportDetail {
@@ -109,8 +116,28 @@ export class MemoryRepository implements OperationsRepository {
     return `R-${state.seq}`;
   }
 
-  async saveAction(action: OperationalAction) {
-    state.actions.set(action.id, clone(action));
+  /** Same guards as the Postgres `commit_confirmed_action`; checks run before any write, so it is all-or-nothing. */
+  async commitConfirmedAction(c: ConfirmedActionCommit) {
+    const current = state.orders.get(c.order.id);
+    if (!current || current.updatedAt !== c.expectedOrderUpdatedAt) throw new OrderChangedError(c.order.id);
+    const report = state.reports.get(c.reportId);
+    if (!report || report.report.status !== "CONFIRMED") throw new Error("REPORT_NOT_CONFIRMED");
+
+    state.orders.set(c.order.id, clone(c.order));
+    state.actions.set(c.action.id, clone(c.action));
+    report.actionId = c.action.id;
+    report.report = { ...report.report, status: "EXECUTED", timings: clone(c.timings), updatedAt: c.executedAt };
+    for (const e of c.audit) await this.appendAudit(e);
+  }
+
+  async saveRecording(reportId: string, agentId: string, audio: StoredAudio) {
+    const path = `${agentId}/${reportId}.${audio.mimeType.includes("wav") ? "wav" : "audio"}`;
+    state.recordings.set(path, { data: audio.data.slice(0), mimeType: audio.mimeType });
+    return path;
+  }
+  async getRecording(path: string) {
+    const a = state.recordings.get(path);
+    return a ? { data: a.data.slice(0), mimeType: a.mimeType } : null;
   }
 
   async savePromptAudio(reportId: string, audio: StoredPromptAudio) {

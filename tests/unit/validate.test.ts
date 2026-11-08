@@ -74,7 +74,8 @@ describe("validateExtraction", () => {
     const out = validateExtraction(input({ raw, transcript }));
     expect(out.outcome).toBe("REJECTED");
     expect(check(out, "ORDER_ASSIGNED_TO_AGENT")).toBe("FAIL");
-    expect(out.resolvedOrder).toBeNull();
+    // The reference did resolve (the order exists) — it is refused, not unknown.
+    expect(out.resolvedOrder?.id).toBe("ORD-3388");
   });
 
   it("refuses changes to a delivered order", () => {

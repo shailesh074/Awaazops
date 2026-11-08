@@ -101,7 +101,7 @@ export function buildReport(spec: ReportSpec): ReportDetail {
             reportId: spec.id,
             outcome: spec.outcome,
             checks: buildChecks(spec.checks),
-            resolvedOrderId: spec.outcome === "VERIFIED" ? (spec.orderId ?? null) : null,
+            resolvedOrderId: spec.orderId ?? null,
             clarificationQuestion: spec.clarification ?? null,
           },
     order,

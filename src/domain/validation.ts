@@ -28,7 +28,7 @@ export const validationResultSchema = z.object({
   reportId: z.string(),
   outcome: validationOutcomeSchema,
   checks: z.array(validationCheckSchema),
-  /** Canonical order ID once verified against the database. */
+  /** The database order the spoken reference matched (canonical ID), whatever the outcome. Null if none. */
   resolvedOrderId: z.string().nullable(),
   /** Question to put to the agent when outcome is NEEDS_CLARIFICATION. */
   clarificationQuestion: z.string().nullable(),

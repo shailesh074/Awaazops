@@ -35,6 +35,7 @@ export interface ValidateOutput {
   payload: ExtractionPayload | null;
   outcome: ValidationOutcome;
   checks: ValidationCheck[];
+  /** The database order the spoken reference matched (null if none) — set even when the outcome is REJECTED. */
   resolvedOrder: Order | null;
   /** Clarification / refusal text for the agent, or the confirmation prompt when VERIFIED. */
   prompt: string;
@@ -89,7 +90,8 @@ export function validateExtraction(input: ValidateInput): ValidateOutput {
   const finish = (outcome: ValidationOutcome, payload: ExtractionPayload | null, order: Order | null, prompt: string): ValidateOutput => ({
     payload,
     outcome,
-    resolvedOrder: outcome === "VERIFIED" ? order : null,
+    // The order the reference resolved to, whatever the outcome. Execution is gated by report status, not this.
+    resolvedOrder: order,
     prompt,
     checks: (Object.keys(CHECK_LABELS) as ValidationCheckId[]).map((id) => {
       const [s, detail] = status.get(id) ?? ["SKIPPED", "Not reached."];

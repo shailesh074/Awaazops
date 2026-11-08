@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { actionTypeSchema } from "@/domain";
-import { getCurrentAgentId } from "@/server/auth/current-agent";
+import { requireAgentApi } from "@/server/auth/session";
 import { errorResponse } from "@/server/http";
 import { editReport } from "@/server/pipeline/process-report";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/repo
   try {
     const { id } = await params;
     const body = editSchema.parse(await request.json());
-    return Response.json({ report: await editReport(id, await getCurrentAgentId(), body) });
+    return Response.json({ report: await editReport(id, (await requireAgentApi()).agentId, body) });
   } catch (err) {
     return errorResponse(err);
   }

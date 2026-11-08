@@ -4,12 +4,14 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReportFlow } from "@/components/agent/report-flow";
 import { getProviderStatus } from "@/server/providers/status";
+import { requireAgentPage } from "@/server/auth/session";
 
 export const metadata: Metadata = { title: "Report an issue" };
 
 /** Provider config is runtime env, so the flow streams in at request time. */
 async function Flow() {
   await connection();
+  await requireAgentPage();
   const providers = getProviderStatus();
   const simulated = (stage: string) => providers.find((p) => p.stage === stage)?.simulated ?? true;
   return <ReportFlow sttSimulated={simulated("stt")} ttsSimulated={simulated("tts")} />;

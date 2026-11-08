@@ -1,10 +1,11 @@
+import { connection } from "next/server";
 import { z } from "zod";
 import { languageCodeSchema } from "@/domain";
-import { getCurrentAgentId } from "@/server/auth/current-agent";
+import { requireAgentApi } from "@/server/auth/session";
 import { errorResponse } from "@/server/http";
 import { ReportError } from "@/server/pipeline/errors";
 import { submitReport, type StageEvent } from "@/server/pipeline/process-report";
-import { listReportsForAgent } from "@/server/data";
+import { getReadRepository } from "@/server/repositories";
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
@@ -16,8 +17,15 @@ const fieldsSchema = z.object({
 
 /** GET /api/reports — the current agent's reports, newest first. */
 export async function GET() {
+  await connection();
   try {
-    return Response.json({ reports: await listReportsForAgent(await getCurrentAgentId()) });
+    const viewer = await requireAgentApi();
+    const reports = await (await getReadRepository()).listReports();
+    return Response.json({
+      reports: reports
+        .filter((r) => r.agent.id === viewer.agentId)
+        .sort((a, b) => b.report.createdAt.localeCompare(a.report.createdAt)),
+    });
   } catch (err) {
     return errorResponse(err);
   }
@@ -31,6 +39,7 @@ export async function GET() {
 export async function POST(request: Request) {
   let input: Parameters<typeof submitReport>[0];
   try {
+    const viewer = await requireAgentApi(); // authenticate before reading the upload
     const form = await request.formData();
     const fields = fieldsSchema.parse({
       language: form.get("language"),
@@ -45,7 +54,7 @@ export async function POST(request: Request) {
       audio = { data: await file.arrayBuffer(), mimeType: file.type, durationMs: fields.durationMs };
     }
     input = {
-      agentId: await getCurrentAgentId(),
+      agentId: viewer.agentId,
       language: fields.language,
       audio,
       mockTranscript: fields.mockTranscript,

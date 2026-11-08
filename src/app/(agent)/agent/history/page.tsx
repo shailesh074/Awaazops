@@ -3,14 +3,14 @@ import { ChevronDown } from "lucide-react";
 import { DemoDataBanner } from "@/components/shared/demo-data-banner";
 import { ReportStatusPill } from "@/components/shared/status-pill";
 import { displayValue } from "@/lib/extraction-display";
-import { listReportsForAgent } from "@/server/data";
+import { listMyReports } from "@/server/data";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { ACTION_LABELS } from "@/lib/labels";
 
 export const metadata: Metadata = { title: "My reports" };
 
 export default async function AgentHistoryPage() {
-  const reports = await listReportsForAgent();
+  const reports = await listMyReports();
   return (
     <div className="space-y-5">
       <header className="space-y-1">

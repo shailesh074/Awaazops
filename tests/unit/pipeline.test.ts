@@ -58,6 +58,9 @@ describe("report pipeline", () => {
     const r = await submit("Order 3388 ka customer available nahi hai, kal try karna.");
     expect(r.report.status).toBe("REJECTED");
     expect(r.validation?.outcome).toBe("REJECTED");
+    // The order resolved (dispatchers see it), but its customer details are not sent to this agent.
+    expect(r.validation?.resolvedOrderId).toBe("ORD-3388");
+    expect(r.order).toBeNull();
   });
 
   it("lets the agent fix a missing order number by edit", async () => {

@@ -1,4 +1,4 @@
-import { getCurrentAgentId } from "@/server/auth/current-agent";
+import { requireAgentApi } from "@/server/auth/session";
 import { errorResponse } from "@/server/http";
 import { confirmReport } from "@/server/pipeline/process-report";
 
@@ -6,7 +6,7 @@ import { confirmReport } from "@/server/pipeline/process-report";
 export async function POST(_request: Request, { params }: RouteContext<"/api/reports/[id]/confirm">) {
   try {
     const { id } = await params;
-    return Response.json({ report: await confirmReport(id, await getCurrentAgentId()) });
+    return Response.json({ report: await confirmReport(id, (await requireAgentApi()).agentId) });
   } catch (err) {
     return errorResponse(err);
   }
