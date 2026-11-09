@@ -1,8 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { isSupabaseBackend } from "@/server/env";
+import { hasAppRole, safeNext } from "@/server/auth/redirect";
 import { createUserClient } from "@/server/supabase/clients";
 
 export interface SignInState {
@@ -14,12 +16,6 @@ const credentials = z.object({
   password: z.string().min(1, "Enter your password."),
   next: z.string().optional(),
 });
-
-/** Only same-site relative paths are allowed as a post-login destination. */
-function safeNext(next: string | undefined, role: string | undefined): string {
-  if (next && next.startsWith("/") && !next.startsWith("//")) return next;
-  return role === "dispatcher" ? "/dashboard" : "/agent";
-}
 
 export async function signIn(_prev: SignInState, formData: FormData): Promise<SignInState> {
   if (!isSupabaseBackend()) redirect("/agent");
@@ -36,11 +32,27 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
   if (error || !data.user) return { error: "Email or password is incorrect." };
 
   const role = (data.user.app_metadata as { role?: string }).role;
-  if (role !== "agent" && role !== "dispatcher") {
+  if (!hasAppRole(role)) {
     await supabase.auth.signOut();
     return { error: "This account has no AwaazOps role yet. Ask an administrator to set it up." };
   }
   redirect(safeNext(parsed.data.next, role));
+}
+
+/** Starts Google sign-in. Supabase sends the browser to Google, then back to /auth/callback. */
+export async function signInWithGoogle(formData: FormData): Promise<void> {
+  if (!isSupabaseBackend()) redirect("/agent");
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") || host?.startsWith("127.0.0.1") ? "http" : "https");
+  const next = formData.get("next");
+  const callback = new URL("/auth/callback", `${proto}://${host}`);
+  if (typeof next === "string" && next) callback.searchParams.set("next", safeNext(next, undefined));
+
+  const supabase = await createUserClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: callback.toString() } });
+  if (error || !data.url) redirect("/login?error=oauth");
+  redirect(data.url);
 }
 
 export async function signOut(): Promise<void> {

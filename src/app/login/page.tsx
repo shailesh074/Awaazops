@@ -5,9 +5,16 @@ import { connection } from "next/server";
 import { BrandLockup } from "@/components/shared/brand-mark";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isSupabaseBackend } from "@/server/env";
+import { isGoogleSignInEnabled } from "@/server/auth/providers";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
+
+const NOTICES: Record<string, string> = {
+  no_role: "That Google account isn't set up for AwaazOps yet. Ask an administrator to give it a role, then try again.",
+  oauth: "Google sign-in didn't complete. Please try again.",
+  cancelled: "Google sign-in was cancelled.",
+};
 
 async function LoginBody({ searchParams }: { searchParams: PageProps<"/login">["searchParams"] }) {
   await connection();
@@ -25,8 +32,14 @@ async function LoginBody({ searchParams }: { searchParams: PageProps<"/login">["
       </div>
     );
   }
-  const next = (await searchParams).next;
-  return <LoginForm next={typeof next === "string" ? next : undefined} />;
+  const [{ next, error }, googleEnabled] = await Promise.all([searchParams, isGoogleSignInEnabled()]);
+  return (
+    <LoginForm
+      next={typeof next === "string" ? next : undefined}
+      googleEnabled={googleEnabled}
+      notice={typeof error === "string" ? (NOTICES[error] ?? null) : null}
+    />
+  );
 }
 
 export default function LoginPage(props: PageProps<"/login">) {

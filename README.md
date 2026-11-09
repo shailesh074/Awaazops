@@ -59,6 +59,16 @@ nothing. The buttons remain the primary path, and the audit trail records what w
    ```
 4. `npm run dev` and sign in at `/login`. Agents land on `/agent`, dispatchers on `/dashboard`.
 
+**Sign in with Google (optional).** The button appears on `/login` automatically once Google is enabled in Supabase:
+1. Google Cloud Console → APIs & Services → Credentials → *Create OAuth client ID* (Web application). Authorised
+   redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. Supabase → Authentication → Sign In / Providers → Google: enable, paste the client ID and secret.
+3. Supabase → Authentication → URL Configuration: add `http://localhost:3000/auth/callback` (and your deployed
+   `/auth/callback`) to Redirect URLs.
+4. A Google account gets in only after it has a role. Sign in once with Google (it is created without a role and
+   turned away), then: `npm run db:provision -- --email you@gmail.com --role dispatcher` (no password needed for an
+   existing account).
+
 **Security model.** Roles live in Supabase `app_metadata` (only the service role can set them). Page reads use the
 signed-in user's session, so Postgres row-level security decides what each agent or dispatcher sees. The server
 pipeline writes with the service role through transactional SQL functions, after checking the user. The proxy only
