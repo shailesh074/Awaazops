@@ -64,29 +64,34 @@ export type ScoredField = (typeof SCORED_FIELDS)[number];
 
 export interface SampleScore {
   sampleId: string;
-  wer: number;
+  /** Null when the sample has no reference transcript — never estimated. */
+  wer: number | null;
   fields: Record<ScoredField, boolean>;
   correctCount: number;
   /** Wrong order extracted but verification refused to mark it VERIFIED. */
   caughtByVerification: boolean;
   /** Wrong order extracted AND verified — the failure the Reliability Engine must prevent. */
   unsafe: boolean;
+  /** The sample could not be processed at all (counts as wrong on every field). */
+  failed: boolean;
   totalLatencyMs: number;
 }
 
 export function scoreSample(sample: LabSample, result: LabResult): SampleScore {
+  const p = result.payload;
   const clarified = result.validationOutcome === "NEEDS_CLARIFICATION";
-  const orderOk = result.payload.orderReference.value === sample.expected.orderReference;
+  const orderOk = p !== null && p.orderReference.value === sample.expected.orderReference;
   const fields: Record<ScoredField, boolean> = {
     orderReference: orderOk,
-    issue: result.payload.issue.value === sample.expected.issue,
-    requestedAction: result.payload.requestedAction.value === sample.expected.requestedAction,
-    clarification: clarified === sample.expected.expectsClarification,
+    issue: p !== null && p.issue.value === sample.expected.issue,
+    requestedAction: p !== null && p.requestedAction.value === sample.expected.requestedAction,
+    clarification: p !== null && clarified === sample.expected.expectsClarification,
   };
-  const wrongOrder = sample.expected.orderReference !== null && !orderOk;
+  const wrongOrder = p !== null && sample.expected.orderReference !== null && !orderOk;
   return {
     sampleId: sample.id,
-    wer: wordErrorRate(sample.referenceTranscript, result.transcript),
+    failed: p === null,
+    wer: sample.referenceTranscript && p !== null ? wordErrorRate(sample.referenceTranscript, result.transcript) : null,
     fields,
     correctCount: Object.values(fields).filter(Boolean).length,
     caughtByVerification: wrongOrder && result.validationOutcome !== "VERIFIED",
@@ -97,7 +102,11 @@ export function scoreSample(sample: LabSample, result: LabResult): SampleScore {
 
 export interface RunSummary {
   samples: number;
-  meanWer: number;
+  /** Mean over samples that have a reference transcript; null when none do. */
+  meanWer: number | null;
+  /** How many samples had a reference transcript (the WER denominator). */
+  werSamples: number;
+  failed: number;
   fieldAccuracy: Record<ScoredField, number>;
   exactMatchRate: number;
   unsafeUpdates: number;
@@ -125,11 +134,14 @@ export function summarizeRun(scores: SampleScore[], results: LabResult[]): RunSu
     Object.entries(stageTotals).map(([k, v]) => [k, v!.sum / v!.count]),
   ) as Partial<Record<PipelineStage, number>>;
 
-  const totals = scores.map((s) => s.totalLatencyMs).sort((a, b) => a - b);
+  const totals = scores.filter((s) => !s.failed).map((s) => s.totalLatencyMs).sort((a, b) => a - b);
+  const withRef = scores.filter((s): s is SampleScore & { wer: number } => s.wer !== null);
 
   return {
     samples: scores.length,
-    meanWer: scores.reduce((a, s) => a + s.wer, 0) / n,
+    meanWer: withRef.length ? withRef.reduce((a, s) => a + s.wer, 0) / withRef.length : null,
+    werSamples: withRef.length,
+    failed: scores.filter((s) => s.failed).length,
     fieldAccuracy,
     exactMatchRate: scores.filter((s) => s.correctCount === SCORED_FIELDS.length).length / n,
     unsafeUpdates: scores.filter((s) => s.unsafe).length,

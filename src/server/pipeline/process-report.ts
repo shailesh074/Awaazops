@@ -20,6 +20,7 @@ import { validateExtraction, type ValidateOutput } from "@/server/reliability/va
 import { normaliseReasoning } from "@/server/reliability/normalise";
 import { applyAction } from "@/server/actions/apply-action";
 import { isActionAllowed } from "@/server/reliability/policy";
+import { classifySpokenReply, type SpokenDecision } from "@/lib/spoken-reply";
 import { ReportError } from "./errors";
 
 export type StageEvent =
@@ -278,7 +279,12 @@ export async function editReport(
  * The only path to an operational write. Requires AWAITING_CONFIRMATION, re-checks the order at the
  * moment of confirmation (it may have changed), then executes and audits.
  */
-export async function confirmReport(id: string, agentId: string): Promise<ReportDetail> {
+/** How a decision reached the server: a button tap, or a spoken reply (with what was heard). */
+export type DecisionChannel =
+  | { channel: "tap" }
+  | { channel: "voice"; heard: string; sttProvider: string; sttModel: string | null };
+
+export async function confirmReport(id: string, agentId: string, via: DecisionChannel = { channel: "tap" }): Promise<ReportDetail> {
   const repo = getRepository();
   const stored = await loadOwned(repo, id, agentId);
   if (stored.report.status !== "AWAITING_CONFIRMATION")
@@ -292,7 +298,7 @@ export async function confirmReport(id: string, agentId: string): Promise<Report
   transition(stored, "CONFIRMED");
   const confirmedAt = now();
   await repo.saveReport(stored);
-  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "ACTION_CONFIRMED", before: { status: "AWAITING_CONFIRMATION" }, after: { status: "CONFIRMED", action }, createdAt: confirmedAt });
+  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "ACTION_CONFIRMED", before: { status: "AWAITING_CONFIRMATION" }, after: { status: "CONFIRMED", action, via }, createdAt: confirmedAt });
 
   const fail = async (reason: string) => {
     transition(stored, "FAILED");
@@ -333,14 +339,53 @@ export async function confirmReport(id: string, agentId: string): Promise<Report
   return agentView(await repo.getReport(id), agentId);
 }
 
-export async function rejectReport(id: string, agentId: string): Promise<ReportDetail> {
+export async function rejectReport(id: string, agentId: string, via: DecisionChannel = { channel: "tap" }): Promise<ReportDetail> {
   const repo = getRepository();
   const stored = await loadOwned(repo, id, agentId);
   const from = stored.report.status;
   if (from !== "AWAITING_CONFIRMATION" && from !== "NEEDS_CLARIFICATION")
     throw new ReportError("INVALID_STATE", `Cannot reject a report that is ${from}.`);
   transition(stored, "REJECTED");
-  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_REJECTED", before: { status: from }, after: { status: "REJECTED" }, createdAt: now() });
+  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_REJECTED", before: { status: from }, after: { status: "REJECTED", via }, createdAt: now() });
   await repo.saveReport(stored);
   return agentView(await repo.getReport(id), agentId);
+}
+
+export interface SpokenReplyResult {
+  decision: SpokenDecision;
+  heard: string;
+  report: ReportDetail;
+}
+
+/**
+ * The agent answers the confirmation prompt by voice. The reply is transcribed by the real speech-to-text
+ * provider and classified by a strict deterministic yes/no lexicon. Only a clear "yes" confirms and only a
+ * clear "no" rejects; anything else changes nothing (logged for traceability) and the agent uses the buttons.
+ */
+export async function answerByVoice(id: string, agentId: string, audio: AudioInput, language: LanguageCode): Promise<SpokenReplyResult> {
+  const repo = getRepository();
+  const stored = await loadOwned(repo, id, agentId);
+  if (stored.report.status !== "AWAITING_CONFIRMATION")
+    throw new ReportError("INVALID_STATE", `Only reports awaiting confirmation can be answered (this one is ${stored.report.status}).`);
+  const stt = getSttProvider();
+  if (stt.id === "mock-stt") throw new ReportError("INVALID_STATE", "Speech-to-text is simulated, so spoken replies are unavailable. Use the buttons.");
+
+  let heard: string;
+  let model: string | null;
+  try {
+    const t = await stt.transcribe(audio, { language });
+    heard = t.text.trim();
+    model = t.provenance.model ?? null;
+  } catch (err) {
+    if (err instanceof ProviderError) throw new ReportError("UPSTREAM_ERROR", "Could not hear the reply. Please use the buttons.");
+    throw err;
+  }
+
+  const decision = classifySpokenReply(heard);
+  const via: DecisionChannel = { channel: "voice", heard, sttProvider: stt.id, sttModel: model };
+  if (decision === "yes") return { decision, heard, report: await confirmReport(id, agentId, via) };
+  if (decision === "no") return { decision, heard, report: await rejectReport(id, agentId, via) };
+
+  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "SPOKEN_REPLY_UNCLEAR", before: null, after: via, createdAt: now() });
+  return { decision, heard, report: agentView(await repo.getReport(id), agentId) };
 }

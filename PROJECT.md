@@ -242,7 +242,7 @@ Each step ends in a verifiable, demoable state before moving on.
      docs.gnani.ai (read 2026-11-06). Unit tests pin the documented request/response/error shapes.
    - Browser converts recordings to 16 kHz mono WAV (`src/lib/audio/to-wav.ts`) — WebM is not a documented format.
    - Recording capped at 30 s (REST limit). Calls serialised per process (one active request per key), one retry on 429.
-   - Lab: `POST /api/lab/transcribe` runs Prisma on uploaded/recorded samples → real transcript, WER, latency.
+   - Lab: originally `POST /api/lab/transcribe`; replaced in step 9 by stored samples and measured benchmark runs.
    - Verified end to end against a local stub implementing the documented contract (not Gnani).
 6. **Reasoning & validation** — LLM adapter, extraction schema, Reliability Engine with unit tests.
    ✅ built and tested; ⏳ Claude not yet run live (no Anthropic key on this machine).
@@ -283,8 +283,28 @@ Each step ends in a verifiable, demoable state before moving on.
    - Agent recordings stored as evidence; playable in the exception inspector.
    - 18 database tests: RLS per role (with a control test), write denial, append-only audit, atomic confirm and
      its concurrency guard, and a full fixture → seed → Postgres → mapping round trip.
-   - Not done: realtime dashboard updates (pages refresh per request), lab run persistence.
+   - Realtime dashboard and Lab persistence followed in step 9.
 9. **End-to-end integration** — full flow on real providers, error and clarification paths.
+   ✅ built, tested and **verified live on 2026-11-09**.
+   - **Live dashboard** (migration 004): `voice_reports`, `audit_events`, `orders` in the `supabase_realtime`
+     publication; the console subscribes with the user's session and refreshes (debounced). Verified live: an agent
+     received only their own report's event, a dispatcher both. Demo mode polls every 15 s while visible.
+   - **Testing Lab, measured** (migration 005): `lab_samples` / `lab_runs` / `lab_results` (dispatcher-read RLS,
+     no client writes), private `lab-audio` bucket. Labelled clips are saved from `/lab`; `POST /api/lab/runs`
+     runs each through Prisma → reasoning → normaliser → verification, timing every stage, and streams progress.
+     A failing clip is recorded as failed (never scored as correct); WER is "n/a" without a reference transcript.
+     The page shows the latest measured run; otherwise the scripted demo run, bannered.
+   - Live run LR-3c622c6f (2 Timbre-synthesised clips, clean): English "order 4410 … address is wrong" → VERIFIED,
+     4/4 fields, WER 0. Hinglish "order chaar aath do ek …" → Prisma heard "chaar **aap** do ek" → no order number →
+     NEEDS_CLARIFICATION (safe: no guess, no unsafe update), WER 18.8 %. Prisma ~0.45 s, rules ~30 ms, verify ~5 ms.
+     Synthetic clips are labelled as such; real field recordings are still needed for meaningful accuracy numbers.
+   - **Spoken yes/no confirmation**: `POST /api/reports/:id/spoken-reply` → Prisma → `classifySpokenReply`
+     (`src/lib/spoken-reply.ts`). Strict: every word must be a yes-word (or every word a no-word) or a filler,
+     ≤ 6 words; mixed, negated or extra content is "unclear" and changes nothing (logged as
+     `SPOKEN_REPLY_UNCLEAR`). Confirm/reject audit events carry `via: { channel: "voice", heard, sttProvider }`.
+     Live round trip Timbre → Prisma → classifier: "haan ji theek hai", "हाँ जी", "yes confirm" → yes;
+     "nahi cancel karo", "नहीं", "no" → no. One transient Prisma 504 was seen; it surfaces as "use the buttons".
+   - Not verified in a browser: the login click-through and the new Lab / spoken-reply UI (needs a manual sign-in).
 10. **Test, optimise, deploy** — lab benchmark run, latency tuning, Vercel deploy, demo script.
 
 ## 10. Design Direction
@@ -328,7 +348,7 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 - [ ] Vercel plan limits: request body size (~4.5 MB) and function duration → audio may need direct-to-Storage upload.
 - [x] Auth model: Supabase Auth email/password; `app_metadata.role` = agent | dispatcher (+ `agent_id`), set by
       `npm run db:provision` with the service role.
-- [x] Supabase connected and verified live (2026-11-08). Remaining: realtime dashboard, lab run persistence.
+- [x] Supabase connected and verified live (2026-11-08); realtime dashboard and Lab persistence live (2026-11-09).
 - [ ] Order ID format in seed data (e.g. numeric `4821` spoken, stored as `ORD-4821`).
 
 ## 12. Decision Log
@@ -388,3 +408,7 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-09 | Confidence is nullable; rules and agent edits report `null` | No invented scores — only an LLM's self-reported confidence is shown, labelled as such |
 | 2026-11-09 | Three provenance kinds: Live / Rules / Simulated; notices reflect actual configuration | A blanket "mock AI" banner was false once Gnani and Supabase were live |
 | 2026-11-09 | Accept Prisma hi-IN's spaced digits ("4 9 5 2") and "07:00" times | Found in the live Hindi round trip; before the fix they produced "no order" and 12:00 instead of 19:00 |
+| 2026-11-09 | Realtime triggers a server re-render; rows are never patched client-side | Every view stays RLS-filtered and computed by the same server code |
+| 2026-11-09 | Lab page shows the latest measured run, else the demo run under a banner | Measured and scripted numbers are never mixed on one screen |
+| 2026-11-09 | Lab verifies each clip as the named order's assigned agent | The Lab measures recognition and verification, not route assignment |
+| 2026-11-09 | Spoken yes/no uses a strict closed lexicon; unclear replies change nothing | A misheard "yes" would execute an action; a missed one costs a tap |

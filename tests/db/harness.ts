@@ -28,6 +28,8 @@ const SUPABASE_BOOTSTRAP = `
   $$;
   grant execute on function auth.jwt(), auth.uid() to anon, authenticated, service_role;
 
+  create publication supabase_realtime;
+
   create schema storage;
   create table storage.buckets (id text primary key, name text not null, public boolean default false);
 `;

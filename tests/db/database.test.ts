@@ -95,6 +95,25 @@ describe("row-level security", () => {
   });
 });
 
+describe("testing lab tables", () => {
+  it("are readable by dispatchers only and writable by nobody but the server", async () => {
+    await db.query(`insert into public.lab_samples (id, title, language, accent, noise, duration_ms, audio_path, mime_type, created_by) values ('LS-t', 't', 'hi-en', 'x', 'clean', 1000, 'LS-t.wav', 'audio/wav', 'test')`);
+    expect(await count("authenticated", DISPATCHER, "lab_samples")).toBe(1);
+    expect(await count("authenticated", AGENT_101, "lab_samples")).toBe(0);
+    await expect(count("anon", {}, "lab_samples")).rejects.toThrow(/permission denied/);
+    await expect(as(db, "authenticated", DISPATCHER, "delete from public.lab_samples")).rejects.toThrow(/permission denied/);
+    await expect(as(db, "authenticated", DISPATCHER, "insert into public.lab_runs (id) values ('x')")).rejects.toThrow(/permission denied/);
+    await db.query("delete from public.lab_samples where id = 'LS-t'");
+  });
+});
+
+describe("realtime", () => {
+  it("publishes exactly the tables the console listens to", async () => {
+    const { rows } = await db.query<{ tablename: string }>("select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by 1");
+    expect(rows.map((r) => r.tablename)).toEqual(["audit_events", "orders", "voice_reports"]);
+  });
+});
+
 describe("audit trail", () => {
   it("is append-only, even for the service role", async () => {
     await expect(as(db, "service_role", {}, "update audit_events set event = 'X'")).rejects.toThrow(/append-only/);

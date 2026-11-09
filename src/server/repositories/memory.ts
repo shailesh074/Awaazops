@@ -1,5 +1,5 @@
 import "server-only";
-import type { AuditEvent, OperationalAction, Order, ReportDetail } from "@/domain";
+import type { AuditEvent, LabResult, LabRun, OperationalAction, Order, ReportDetail, StoredLabSample } from "@/domain";
 import { AGENTS, ORDERS } from "@/mocks/fleet";
 import { AUDIT_EVENTS, REPORTS } from "@/mocks/reports";
 import {
@@ -8,6 +8,7 @@ import {
   type OperationsRepository,
   type StoredAudio,
   type StoredPromptAudio,
+  type StoredLabRun,
   type StoredReport,
 } from "./types";
 
@@ -17,6 +18,10 @@ interface MemoryState {
   actions: Map<string, OperationalAction>;
   promptAudio: Map<string, StoredPromptAudio>;
   recordings: Map<string, StoredAudio>;
+  labSamples: Map<string, StoredLabSample>;
+  labAudio: Map<string, StoredAudio>;
+  labRuns: Map<string, StoredLabRun>;
+  labResults: Map<string, LabResult[]>;
   audit: AuditEvent[];
   seq: number;
   auditSeq: number;
@@ -43,6 +48,10 @@ function seed(): MemoryState {
     actions,
     promptAudio: new Map(),
     recordings: new Map(),
+    labSamples: new Map(),
+    labAudio: new Map(),
+    labRuns: new Map(),
+    labResults: new Map(),
     audit: [...AUDIT_EVENTS].reverse(), // stored oldest → newest
     seq: 1042,
     auditSeq: 0,
@@ -58,6 +67,10 @@ const state = (globalForStore.__awaazStore ??= seed());
 // Stores created by an older build survive dev hot reloads; add maps introduced since.
 state.promptAudio ??= new Map();
 state.recordings ??= new Map();
+state.labSamples ??= new Map();
+state.labAudio ??= new Map();
+state.labRuns ??= new Map();
+state.labResults ??= new Map();
 
 const clone = <T,>(v: T): T => structuredClone(v);
 
@@ -154,6 +167,34 @@ export class MemoryRepository implements OperationsRepository {
     state.audit.push(stored);
     return clone(stored);
   }
+  async listLabSamples() {
+    return clone([...state.labSamples.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  }
+  async saveLabSample(sample: StoredLabSample, audio: StoredAudio) {
+    state.labAudio.set(sample.audioPath, { data: audio.data.slice(0), mimeType: audio.mimeType });
+    state.labSamples.set(sample.id, clone(sample));
+  }
+  async getLabAudio(path: string) {
+    const a = state.labAudio.get(path);
+    return a ? { data: a.data.slice(0), mimeType: a.mimeType } : null;
+  }
+  async saveLabRun(run: StoredLabRun) {
+    state.labRuns.set(run.id, clone(run));
+  }
+  async saveLabResult(runId: string, result: LabResult) {
+    const list = state.labResults.get(runId) ?? [];
+    state.labResults.set(runId, [...list.filter((r) => r.sampleId !== result.sampleId), clone(result)]);
+  }
+  async getLatestLabRun(): Promise<LabRun | null> {
+    const run = [...state.labRuns.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (!run) return null;
+    return clone({
+      id: run.id, label: run.label, createdAt: run.createdAt, providers: run.providers, status: run.status,
+      simulated: run.providers.stt.startsWith("mock"), source: "measured" as const,
+      results: state.labResults.get(run.id) ?? [],
+    });
+  }
+
   async listAudit() {
     return clone([...state.audit].reverse());
   }

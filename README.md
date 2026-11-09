@@ -29,6 +29,17 @@ Either way, every result goes through the same normaliser, database verification
 Every result shows where it came from: **Live** (Gnani / an LLM), **Rules** (deterministic, marked "fallback" when
 it stood in for an LLM), or **Simulated** (mock providers and scripted demo data).
 
+**Live dashboard.** With Supabase, the console subscribes to Realtime changes on reports, audit events and orders
+(filtered by RLS for the signed-in user) and refreshes itself; in demo mode it re-checks every 15 s while visible.
+
+**Testing Lab.** Save labelled clips (upload or record) on `/lab`, then **Run benchmark**: each clip goes through
+Gnani Prisma, the active reasoning engine and database verification, with every stage timed. The page shows the
+latest measured run; until one exists it shows the scripted demo run under a "demo data" banner.
+
+**Spoken confirmation.** Agents can answer the confirmation prompt by voice ("haan" / "nahi", "हाँ" / "नहीं",
+"yes" / "no"). Only a reply made entirely of yes-words (or no-words) plus fillers counts; anything else changes
+nothing. The buttons remain the primary path, and the audit trail records what was heard.
+
 ## Connect Supabase
 
 1. Create a Supabase project. Put its URL, publishable (anon) key, secret (service role) key and the
@@ -65,7 +76,10 @@ refreshes sessions and redirects; it is not the security boundary.
 | `POST /api/reports/:id/edit` | agent (own) | JSON `{ orderReference?, requestedAction?, notes? }` — re-verified |
 | `POST /api/reports/:id/confirm` | agent (own) | The only path to an operational change |
 | `POST /api/reports/:id/reject` | agent (own) | Discard; nothing changes |
-| `POST /api/lab/transcribe` | dispatcher | Real STT on a lab sample (refuses on the mock provider) |
+| `POST /api/reports/:id/spoken-reply` | agent (own) | multipart `audio`, `language`, `durationMs` — Prisma transcribes the reply; a clear yes confirms, a clear no rejects, anything else changes nothing. Returns `{ decision, heard, report }` |
+| `POST /api/lab/samples` | dispatcher | multipart labelled clip: `audio`, `title`, `language`, `accent`, `noise`, `durationMs`, `reference?`, `expectedOrder?`, `expectedIssue?`, `expectedAction?`, `expectsClarification` |
+| `GET /api/lab/samples/:id/audio` | dispatcher | Stored sample audio |
+| `POST /api/lab/runs` | dispatcher | Benchmark every stored sample through Prisma → reasoning → verification. Streams NDJSON progress. Refuses on mock STT |
 | `GET /api/system/status` | anyone | Active providers and whether they are simulated |
 
 ## Scripts

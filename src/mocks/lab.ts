@@ -136,5 +136,7 @@ export const LAB_RUNS: LabRun[] = [
     providers: { stt: "mock-stt", reasoning: "mock-llm" },
     simulated: true,
     results,
+    source: "demo",
+    status: "completed",
   },
 ];

@@ -88,3 +88,21 @@ export const editReport = (
   id: string,
   edit: { orderReference?: string; requestedAction?: ActionType; notes?: string | null },
 ) => post(`/api/reports/${encodeURIComponent(id)}/edit`, edit);
+
+export interface SpokenReplyResponse {
+  decision: "yes" | "no" | "unclear";
+  heard: string;
+  report: ReportDetail;
+}
+
+/** Answers the confirmation prompt by voice: the server confirms only on a clear yes, rejects only on a clear no. */
+export async function replyByVoice(id: string, audio: Blob, language: LanguageCode): Promise<SpokenReplyResponse> {
+  const wav = await toWav16kMono(audio);
+  const form = new FormData();
+  form.set("audio", wav.blob, "reply.wav");
+  form.set("language", language);
+  form.set("durationMs", String(Math.max(1, Math.round(wav.durationMs))));
+  const res = await fetch(`/api/reports/${encodeURIComponent(id)}/spoken-reply`, { method: "POST", body: form });
+  if (!res.ok) throw await readError(res);
+  return (await res.json()) as SpokenReplyResponse;
+}

@@ -1,4 +1,4 @@
-import type { Agent, AuditEvent, OperationalAction, Order, Provenance, ReportDetail, Transcript, VoiceReport } from "@/domain";
+import type { Agent, AuditEvent, LabResult, OperationalAction, Order, Provenance, ReportDetail, StoredLabSample, Transcript, VoiceReport } from "@/domain";
 import type { StoredReport } from "./types";
 
 /** Row shapes as returned by PostgREST (snake_case). Pure mapping, no I/O — unit-tested. */
@@ -102,6 +102,41 @@ export function reportDetailFromRow(r: ReportRow, agents: Map<string, Agent>, or
     promptAudio: pa && pa.text === stored.confirmationPrompt ? { provenance: pa.provenance as never } : null,
   };
 }
+
+// ── Lab ───────────────────────────────────────────────────────────────────────────────────────────
+
+export interface LabSampleRow {
+  id: string; title: string; language: StoredLabSample["language"]; accent: string; noise: StoredLabSample["noise"];
+  duration_ms: number; audio_path: string; mime_type: string; reference_transcript: string | null;
+  expected_order: string | null; expected_issue: StoredLabSample["expected"]["issue"];
+  expected_action: StoredLabSample["expected"]["requestedAction"]; expects_clarification: boolean;
+  created_by: string; created_at: string;
+}
+
+export const labSampleFromRow = (r: LabSampleRow): StoredLabSample => ({
+  id: r.id, title: r.title, language: r.language, accent: r.accent, noise: r.noise, durationMs: r.duration_ms,
+  referenceTranscript: r.reference_transcript, audioPath: r.audio_path, mimeType: r.mime_type,
+  createdBy: r.created_by, createdAt: iso(r.created_at),
+  expected: { orderReference: r.expected_order, issue: r.expected_issue, requestedAction: r.expected_action, expectsClarification: r.expects_clarification },
+});
+
+export const labSampleToRow = (s: StoredLabSample): LabSampleRow => ({
+  id: s.id, title: s.title, language: s.language, accent: s.accent, noise: s.noise, duration_ms: Math.round(s.durationMs),
+  audio_path: s.audioPath, mime_type: s.mimeType, reference_transcript: s.referenceTranscript,
+  expected_order: s.expected.orderReference, expected_issue: s.expected.issue, expected_action: s.expected.requestedAction,
+  expects_clarification: s.expected.expectsClarification, created_by: s.createdBy, created_at: s.createdAt,
+});
+
+export interface LabResultRow {
+  run_id: string; sample_id: string; transcript: string; payload: unknown; validation_outcome: LabResult["validationOutcome"];
+  stage_latency: LabResult["stageLatencyMs"]; provenance: LabResult["provenance"]; error: string | null;
+}
+
+export const labResultFromRow = (r: LabResultRow): LabResult => ({
+  sampleId: r.sample_id, transcript: r.transcript, payload: (r.payload ?? null) as LabResult["payload"],
+  validationOutcome: r.validation_outcome, stageLatencyMs: r.stage_latency ?? {}, provenance: r.provenance ?? {},
+  error: r.error, simulated: Boolean(r.provenance?.stt?.simulated),
+});
 
 /** Columns selected for report reads (embedded one-to-one artefacts). */
 export const REPORT_SELECT =

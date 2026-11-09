@@ -74,16 +74,21 @@ export async function listAuditEvents(reportId?: string): Promise<AuditEvent[]> 
   return reportId ? events.filter((e) => e.reportId === reportId) : events;
 }
 
-export async function listLabSamples(): Promise<LabSample[]> {
-  await connection();
-  await requireDispatcherPage();
-  return LAB_SAMPLES;
+export interface LabView {
+  /** "measured": the latest real benchmark over stored samples; "demo": the scripted fixture run. */
+  source: "measured" | "demo";
+  run: LabRun;
+  samples: LabSample[];
+  /** Samples stored for the next benchmark run. */
+  storedSamples: number;
 }
 
-export async function getLatestLabRun(): Promise<LabRun | null> {
-  await connection();
-  await requireDispatcherPage();
-  return LAB_RUNS[0] ?? null;
+/** The latest measured Lab run if one exists; otherwise the clearly-labelled demo run. */
+export async function getLabView(): Promise<LabView> {
+  const repo = await dispatcherRepo();
+  const [stored, run] = await Promise.all([repo.listLabSamples(), repo.getLatestLabRun()]);
+  if (run && run.results.length > 0) return { source: "measured", run, samples: stored, storedSamples: stored.length };
+  return { source: "demo", run: LAB_RUNS[0], samples: LAB_SAMPLES, storedSamples: stored.length };
 }
 
 /** The signed-in agent's own reports, newest first. */

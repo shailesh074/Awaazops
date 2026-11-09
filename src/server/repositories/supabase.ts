@@ -1,12 +1,13 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AuditEvent } from "@/domain";
+import type { AuditEvent, LabResult, LabRun, StoredLabSample } from "@/domain";
 import {
   OrderChangedError,
   type ConfirmedActionCommit,
   type OperationsRepository,
   type StoredAudio,
   type StoredPromptAudio,
+  type StoredLabRun,
   type StoredReport,
 } from "./types";
 import {
@@ -20,10 +21,16 @@ import {
   type AuditRow,
   type OrderRow,
   type ReportRow,
+  labResultFromRow,
+  labSampleFromRow,
+  labSampleToRow,
+  type LabResultRow,
+  type LabSampleRow,
 } from "./supabase-mapping";
 
 const RECORDINGS = "recordings";
 const PROMPT_AUDIO = "prompt-audio";
+const LAB_AUDIO = "lab-audio";
 
 /** Throws with context on any Supabase error; never swallows. */
 function check<T>(res: { data: T; error: { message: string; code?: string } | null }, what: string): T {
@@ -134,6 +141,50 @@ export class SupabaseRepository implements OperationsRepository {
     const rows = check(await this.db.rpc("append_audit", { p_events: [event] }), "append audit") as AuditRow[];
     return auditFromRow(rows[0]);
   }
+  async listLabSamples() {
+    const rows = check(await this.db.from("lab_samples").select("*").order("created_at"), "list lab samples");
+    return ((rows ?? []) as LabSampleRow[]).map(labSampleFromRow);
+  }
+  async saveLabSample(sample: StoredLabSample, audio: StoredAudio) {
+    check(await this.db.storage.from(LAB_AUDIO).upload(sample.audioPath, audio.data, { contentType: audio.mimeType, upsert: true }), "upload lab audio");
+    check(await this.db.from("lab_samples").upsert(labSampleToRow(sample)), "save lab sample");
+  }
+  async getLabAudio(path: string) {
+    const res = await this.db.storage.from(LAB_AUDIO).download(path);
+    if (res.error) return null;
+    return { data: await res.data.arrayBuffer(), mimeType: res.data.type || "audio/wav" };
+  }
+  async saveLabRun(run: StoredLabRun) {
+    check(
+      await this.db.from("lab_runs").upsert({
+        id: run.id, label: run.label, status: run.status, providers: run.providers, sample_count: run.sampleCount,
+        created_by: run.createdBy, created_at: run.createdAt, completed_at: run.completedAt,
+      }),
+      "save lab run",
+    );
+  }
+  async saveLabResult(runId: string, r: LabResult) {
+    check(
+      await this.db.from("lab_results").upsert({
+        run_id: runId, sample_id: r.sampleId, transcript: r.transcript, payload: r.payload, validation_outcome: r.validationOutcome,
+        stage_latency: r.stageLatencyMs, provenance: r.provenance ?? {}, error: r.error ?? null,
+      }),
+      "save lab result",
+    );
+  }
+  async getLatestLabRun(): Promise<LabRun | null> {
+    const run = check(await this.db.from("lab_runs").select("*").order("created_at", { ascending: false }).limit(1).maybeSingle(), "get lab run") as
+      | { id: string; label: string; status: LabRun["status"]; providers: LabRun["providers"]; created_at: string }
+      | null;
+    if (!run) return null;
+    const rows = check(await this.db.from("lab_results").select("*").eq("run_id", run.id), "list lab results");
+    return {
+      id: run.id, label: run.label, createdAt: new Date(run.created_at).toISOString(), providers: run.providers, status: run.status,
+      simulated: run.providers.stt.startsWith("mock"), source: "measured",
+      results: ((rows ?? []) as LabResultRow[]).map(labResultFromRow),
+    };
+  }
+
   async listAudit() {
     const rows = check(await this.db.from("audit_events").select("*").order("created_at", { ascending: false }).order("seq", { ascending: false }), "list audit");
     return (rows as AuditRow[]).map(auditFromRow);

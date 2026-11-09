@@ -4,6 +4,7 @@ import { BrandLockup } from "@/components/shared/brand-mark";
 import { ConsoleNav, ConsoleNavLinks } from "@/components/layout/console-nav";
 import { ConsoleMobileNav } from "@/components/layout/console-mobile-nav";
 import { ViewerMenu } from "@/components/layout/viewer-menu";
+import { LiveUpdates } from "@/components/layout/live-updates";
 
 /** Desktop-first shell for the Operations Dashboard and Intelligence Testing Lab. */
 export default function ConsoleLayout({ children }: LayoutProps<"/">) {
@@ -37,6 +38,12 @@ export default function ConsoleLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+          {/* One live-update subscription per console page (reports, audit trail and order changes). */}
+          <div className="-mt-2 mb-2 flex justify-end lg:-mt-6">
+            <Suspense fallback={null}>
+              <LiveUpdates tables={["voice_reports", "audit_events", "orders"]} />
+            </Suspense>
+          </div>
           {children}
         </main>
       </div>

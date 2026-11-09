@@ -3,7 +3,10 @@ import type {
   Agent,
   AuditEvent,
   Extraction,
+  LabResult,
+  LabRun,
   OperationalAction,
+  StoredLabSample,
   Order,
   Priority,
   Provenance,
@@ -92,4 +95,24 @@ export interface OperationsRepository {
   /** Append-only. */
   appendAudit(event: Omit<AuditEvent, "id">): Promise<AuditEvent>;
   listAudit(): Promise<AuditEvent[]>;
+
+  // ── Intelligence Testing Lab ──
+  listLabSamples(): Promise<StoredLabSample[]>;
+  saveLabSample(sample: StoredLabSample, audio: StoredAudio): Promise<void>;
+  getLabAudio(path: string): Promise<StoredAudio | null>;
+  saveLabRun(run: StoredLabRun): Promise<void>;
+  saveLabResult(runId: string, result: LabResult): Promise<void>;
+  /** Most recent measured run with its results, or null if none exists yet. */
+  getLatestLabRun(): Promise<LabRun | null>;
+}
+
+export interface StoredLabRun {
+  id: string;
+  label: string;
+  status: LabRun["status"];
+  providers: LabRun["providers"];
+  sampleCount: number;
+  createdBy: string;
+  createdAt: string;
+  completedAt: string | null;
 }

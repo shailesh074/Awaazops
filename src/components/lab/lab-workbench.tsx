@@ -30,7 +30,7 @@ export interface LabRow {
   score: SampleScore;
 }
 
-export function LabWorkbench({ rows }: { rows: LabRow[] }) {
+export function LabWorkbench({ rows, measured }: { rows: LabRow[]; measured: boolean }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -111,17 +111,21 @@ export function LabWorkbench({ rows }: { rows: LabRow[] }) {
                       {sample.noise}
                     </span>
                   </TableCell>
-                  <TableCell className={cn("text-right font-mono text-xs tabular", score.wer > 0 && "text-warning")}>
-                    {formatPercent(score.wer, 1)}
+                  <TableCell className={cn("text-right font-mono text-xs tabular", score.wer !== null && score.wer > 0 && "text-warning")}>
+                    {score.wer !== null ? formatPercent(score.wer, 1) : <span className="text-muted-foreground">n/a</span>}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs tabular">
                     {score.correctCount}/{SCORED_FIELDS.length}
                   </TableCell>
                   <TableCell className="hidden text-right font-mono text-xs text-muted-foreground tabular lg:table-cell">
-                    {formatMs(score.totalLatencyMs)}
+                    {score.failed ? "—" : formatMs(score.totalLatencyMs)}
                   </TableCell>
                   <TableCell className="pr-4">
-                    {score.caughtByVerification ? (
+                    {score.failed ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                        <TriangleAlert className="size-3.5" /> Failed
+                      </span>
+                    ) : score.caughtByVerification ? (
                       <span className="inline-flex items-center gap-1 text-xs text-success">
                         <ShieldCheck className="size-3.5" /> Caught
                       </span>
@@ -148,7 +152,7 @@ export function LabWorkbench({ rows }: { rows: LabRow[] }) {
             <SheetTitle>Sample inspection</SheetTitle>
           </SheetHeader>
           <div className="px-6 pb-8">
-            {current ? <SampleDetail sample={current.sample} result={current.result} score={current.score} /> : null}
+            {current ? <SampleDetail sample={current.sample} result={current.result} score={current.score} measured={measured} /> : null}
           </div>
         </SheetContent>
       </Sheet>

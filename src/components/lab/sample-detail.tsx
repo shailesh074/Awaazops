@@ -29,21 +29,28 @@ function expectedValue(sample: LabSample, f: ScoredField): string {
 
 function actualValue(result: LabResult, f: ScoredField): string {
   const p = result.payload;
+  if (!p) return "—";
   if (f === "orderReference") return p.orderReference.value ?? "—";
   if (f === "issue") return p.issue.value ? ISSUE_LABELS[p.issue.value] : "—";
   if (f === "requestedAction") return p.requestedAction.value ? ACTION_LABELS[p.requestedAction.value] : "—";
   return result.validationOutcome === "NEEDS_CLARIFICATION" ? "Yes" : "No";
 }
 
-export function SampleDetail({ sample, result, score }: { sample: LabSample; result: LabResult; score: SampleScore }) {
-  const diff = diffWords(sample.referenceTranscript, result.transcript);
+export function SampleDetail({ sample, result, score, measured }: { sample: LabSample; result: LabResult; score: SampleScore; measured: boolean }) {
+  const diff = sample.referenceTranscript && result.payload ? diffWords(sample.referenceTranscript, result.transcript) : null;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs text-muted-foreground">{sample.id}</span>
         <h3 className="text-sm font-medium">{sample.title}</h3>
-        <OutcomePill outcome={result.validationOutcome} />
+        {result.validationOutcome ? <OutcomePill outcome={result.validationOutcome} /> : null}
       </div>
+
+      {result.error ? (
+        <p className="rounded-lg border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-xs text-destructive">
+          Not processed: {result.error}
+        </p>
+      ) : null}
 
       {score.caughtByVerification ? (
         <p className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/[0.06] px-3 py-2 text-xs text-success">
@@ -56,8 +63,16 @@ export function SampleDetail({ sample, result, score }: { sample: LabSample; res
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">
           <h4 className="text-xs text-muted-foreground">Transcript vs. reference</h4>
-          <span className="font-mono text-xs tabular">WER {formatPercent(score.wer, 1)}</span>
+          <span className="font-mono text-xs tabular">{score.wer !== null ? `WER ${formatPercent(score.wer, 1)}` : "WER n/a"}</span>
         </div>
+        {diff === null ? (
+          <p className="rounded-lg border bg-background/60 p-3 text-[13px] leading-6">
+            {result.transcript || <span className="text-muted-foreground italic">No transcript</span>}
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              {sample.referenceTranscript ? "" : "No reference transcript was given for this sample, so WER is not computed."}
+            </span>
+          </p>
+        ) : (
         <p className="rounded-lg border bg-background/60 p-3 font-mono text-[13px] leading-6">
           {diff.map((t, i) => (
             <span
@@ -72,10 +87,13 @@ export function SampleDetail({ sample, result, score }: { sample: LabSample; res
             </span>
           ))}
         </p>
-        <p className="text-[11px] text-muted-foreground">
-          <span className="text-destructive">Red</span>: inserted or substituted ·{" "}
-          <span className="line-through">struck</span>: missed
-        </p>
+        )}
+        {diff ? (
+          <p className="text-[11px] text-muted-foreground">
+            <span className="text-destructive">Red</span>: inserted or substituted ·{" "}
+            <span className="line-through">struck</span>: missed
+          </p>
+        ) : null}
       </section>
 
       <section>
@@ -115,7 +133,7 @@ export function SampleDetail({ sample, result, score }: { sample: LabSample; res
           <TabsTrigger value="latency">Latency</TabsTrigger>
         </TabsList>
         <TabsContent value="evidence" className="pt-3">
-          <EvidenceInspector transcript={result.transcript} payload={result.payload} />
+          {result.payload ? <EvidenceInspector transcript={result.transcript} payload={result.payload} /> : <p className="text-xs text-muted-foreground">No extraction.</p>}
         </TabsContent>
         <TabsContent value="json" className="pt-3">
           <JsonView value={result.payload} className="max-h-96" />
@@ -124,12 +142,14 @@ export function SampleDetail({ sample, result, score }: { sample: LabSample; res
           <BarList
             ariaLabel="Latency by stage for this sample"
             data={Object.entries(result.stageLatencyMs).map(([k, v]) => ({
-              label: k === "stt" ? "Speech-to-text" : k === "reasoning" ? "Reasoning" : "Validation",
+              label: k === "stt" ? "Speech-to-text" : k === "reasoning" ? "Reasoning" : k === "validation" ? "Validation" : k,
               value: v ?? 0,
               display: formatMs(v ?? 0),
             }))}
           />
-          <p className="mt-3 text-xs text-simulated">Illustrative values — not measured.</p>
+          <p className={cn("mt-3 text-xs", measured ? "text-muted-foreground" : "text-simulated")}>
+            {measured ? "Measured during this run." : "Illustrative values — not measured."}
+          </p>
         </TabsContent>
       </Tabs>
     </div>

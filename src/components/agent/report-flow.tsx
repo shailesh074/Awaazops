@@ -18,6 +18,7 @@ import { ComposeStep } from "./compose-step";
 import { ProcessingStep, type StageProgress } from "./processing-step";
 import { VoicePromptCard } from "./voice-prompt-card";
 import { EditActionForm, type ActionEdit } from "./edit-action-form";
+import { SpokenReply } from "./spoken-reply";
 
 type Phase = "compose" | "processing" | "review" | "done";
 type Busy = null | "confirm" | "reject" | "edit";
@@ -249,6 +250,19 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
       ) : null}
 
       <ValidationChecklist validation={validation} compact />
+
+      {awaiting && !sttSimulated && !editing ? (
+        <SpokenReply
+          reportId={report.id}
+          language={report.language}
+          disabled={busy !== null}
+          onDecided={(d, decision) => {
+            setDetail(d);
+            setPhase("done");
+            if (decision === "yes" && d.report.status === "EXECUTED") toast.success("Order updated");
+          }}
+        />
+      ) : null}
 
       {awaiting ? (
         <div className="sticky bottom-16 z-10 -mx-4 grid grid-cols-[1fr_auto_auto] gap-2 border-t bg-background/90 px-4 py-3 backdrop-blur">
