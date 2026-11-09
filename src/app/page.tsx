@@ -4,7 +4,7 @@ import { BrandLockup } from "@/components/shared/brand-mark";
 
 const PIPELINE = [
   { label: "Voice", detail: "Gnani Prisma v2.5" },
-  { label: "Intelligence", detail: "LLM extraction" },
+  { label: "Intelligence", detail: "Rules engine · optional LLM" },
   { label: "Verification", detail: "Reliability Engine" },
   { label: "Action", detail: "Confirmed + audited" },
 ] as const;
@@ -84,8 +84,8 @@ export default function Home() {
       </section>
 
       <footer className="mt-auto pt-16 text-xs text-muted-foreground">
-        Gnani integrations are pending verification. Until then, AI output is simulated and labelled
-        as such.
+        Speech runs on Gnani Prisma v2.5 and Timbre v2.5. Every result is labelled with the engine that
+        produced it — live service, deterministic rules, or simulated.
       </footer>
     </div>
   );

@@ -142,7 +142,16 @@ export function EvidenceInspector({
                 ) : null}
               </dd>
               <dd className="col-start-2 sm:col-start-3">
-                {value && !editedFields.includes(key) ? <ConfidenceMeter value={field.confidence} /> : null}
+                {value && !editedFields.includes(key) ? (
+                  field.confidence !== null ? (
+                    <ConfidenceMeter value={field.confidence} />
+                  ) : field.evidence ? (
+                    // No genuine score exists (deterministic rule match) — say so rather than show a number.
+                    <span className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase" title="Matched by a deterministic rule; no confidence score">
+                      rule match
+                    </span>
+                  ) : null
+                ) : null}
               </dd>
             </div>
           );

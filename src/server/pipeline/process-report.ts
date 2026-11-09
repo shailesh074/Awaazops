@@ -13,7 +13,7 @@ import {
 } from "@/domain";
 import { getRepository, OrderChangedError, type OperationsRepository, type StoredReport } from "@/server/repositories";
 import { getSttProvider, type AudioInput } from "@/server/providers/stt";
-import { getReasoningProvider } from "@/server/providers/llm";
+import { getReasoningProvider } from "@/server/providers/reasoning";
 import { getTtsProvider } from "@/server/providers/tts";
 import { ProviderError } from "@/server/providers/errors";
 import { validateExtraction, type ValidateOutput } from "@/server/reliability/validate";
@@ -199,7 +199,7 @@ export async function submitReport(input: SubmitInput, emit: (e: StageEvent) => 
       ? { id: `${id}-X`, reportId: id, payload: v.payload, provenance: reasoning.provenance }
       : null;
     await applyValidation(repo, stored, v);
-    await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "VALIDATION_COMPLETED", before: null, after: { outcome: v.outcome }, createdAt: now() });
+    await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "VALIDATION_COMPLETED", before: null, after: { outcome: v.outcome, reasoning: { provider: reasoning.provenance.provider, model: reasoning.provenance.model ?? null, fallbackFrom: reasoning.provenance.fallbackFrom ?? null, fallbackReason: reasoning.provenance.fallbackReason ?? null } }, createdAt: now() });
 
     // 4. Spoken prompt. Non-fatal: if speech synthesis fails the agent still gets the prompt as text.
     await timed("tts", timings, emit, () => speakPrompt(repo, id, v.prompt, input.language));
@@ -239,15 +239,15 @@ export async function editReport(
   const payload = structuredClone(before);
   const agentProvided: Array<"orderReference" | "requestedAction" | "notes"> = [];
   if (edit.orderReference !== undefined) {
-    payload.orderReference = { value: edit.orderReference, evidence: null, confidence: 1 };
+    payload.orderReference = { value: edit.orderReference, evidence: null, confidence: null };
     agentProvided.push("orderReference");
   }
   if (edit.requestedAction !== undefined) {
-    payload.requestedAction = { value: edit.requestedAction, evidence: null, confidence: 1 };
+    payload.requestedAction = { value: edit.requestedAction, evidence: null, confidence: null };
     agentProvided.push("requestedAction");
   }
   if (edit.notes !== undefined) {
-    payload.notes = { value: edit.notes, evidence: null, confidence: 1 };
+    payload.notes = { value: edit.notes, evidence: null, confidence: null };
     agentProvided.push("notes");
   }
 

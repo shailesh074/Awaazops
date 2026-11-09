@@ -7,6 +7,9 @@ import { ProviderError } from "../errors";
 import type { ReasoningInput, ReasoningProvider, ReasoningResult } from "./types";
 
 /**
+ * OPTIONAL LLM enhancement (AWAAZ_REASONING_PROVIDER=claude). Never required: when it is not configured,
+ * fails, refuses or times out, the fallback provider runs the deterministic rules engine instead.
+ *
  * Reasoning with Claude via the Anthropic SDK: structured output constrained to `reasoningOutputSchema`.
  * The model returns quotes and hints only; digits, offsets and dates are derived by the normaliser, and
  * everything is re-verified by the validator. Output is untrusted until then.
@@ -38,7 +41,7 @@ export class ClaudeReasoningProvider implements ReasoningProvider {
     return Boolean(getServerEnv().ANTHROPIC_API_KEY);
   }
 
-  async extract({ transcript, language }: ReasoningInput): Promise<ReasoningResult> {
+  async extract({ transcript, language, signal }: ReasoningInput): Promise<ReasoningResult> {
     const env = getServerEnv();
     if (!this.client && !env.ANTHROPIC_API_KEY) {
       throw new ProviderError(this.id, "NOT_CONFIGURED", "ANTHROPIC_API_KEY is not set.");
@@ -62,7 +65,7 @@ export class ClaudeReasoningProvider implements ReasoningProvider {
             content: `Spoken language: ${LANGUAGE_NAMES[language]}\n\n<transcript>\n${transcript}\n</transcript>`,
           },
         ],
-      });
+      }, { signal }); // the fallback timeout aborts the request instead of leaving it running
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
         throw new ProviderError(this.id, "NOT_CONFIGURED", "Anthropic rejected the API key.", { cause: err });

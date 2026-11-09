@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ChevronDown } from "lucide-react";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { ReportStatusPill } from "@/components/shared/status-pill";
 import { displayValue } from "@/lib/extraction-display";
 import { listMyReports } from "@/server/data";
@@ -17,7 +17,7 @@ export default async function AgentHistoryPage() {
         <h1 className="text-xl font-semibold tracking-tight">My reports</h1>
         <p className="text-sm text-muted-foreground">Previous voice reports and what happened to them.</p>
       </header>
-      <DemoDataBanner />
+      <DataNotice />
       <ul className="space-y-2">
         {reports.map(({ report, transcript, extraction, validation, action, order }) => (
           <li key={report.id}>

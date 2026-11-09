@@ -19,7 +19,12 @@ const serverEnvSchema = z.object({
   // Provider selection. Defaults to mock so the UI can be built before credentials exist.
   AWAAZ_STT_PROVIDER: z.enum(["mock", "gnani-prisma"]).default("mock"),
   AWAAZ_TTS_PROVIDER: z.enum(["mock", "gnani-timbre"]).default("mock"),
-  AWAAZ_LLM_PROVIDER: z.enum(["mock", "claude"]).default("mock"),
+  /** Reasoning engine: "rules" (deterministic, default, no API key) or "claude" (optional LLM enhancement). */
+  AWAAZ_REASONING_PROVIDER: z.enum(["rules", "claude"]).optional(),
+  /** Legacy name for the setting above; "mock" maps to "rules". */
+  AWAAZ_LLM_PROVIDER: z.enum(["mock", "rules", "claude"]).optional(),
+  /** When an LLM is selected: fall back to the rules engine on any LLM failure ("rules", default) or not ("none"). */
+  AWAAZ_REASONING_FALLBACK: z.enum(["rules", "none"]).default("rules"),
 
   // Gnani — one key for all Vachana APIs, sent as `X-API-Key-ID` (docs.gnani.ai, verified 2026-11-06).
   GNANI_API_KEY: optionalString,
@@ -38,11 +43,13 @@ const serverEnvSchema = z.object({
   /** Output container: mp3 is small for mobile playback; wav is the documented example. */
   GNANI_TTS_CONTAINER: z.enum(["mp3", "wav"]).default("mp3"),
 
-  // Reasoning LLM — Claude via the Anthropic SDK.
+  // Optional reasoning LLM — Claude via the Anthropic SDK. Not required: the rules engine needs no key.
   ANTHROPIC_API_KEY: optionalString,
   LLM_MODEL: z.string().trim().min(1).default("claude-opus-5-5"),
   /** Extraction is short and latency-sensitive; `low` effort keeps it fast. Raise if quality needs it. */
   LLM_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("low"),
+  /** After this long the LLM call is abandoned and the rules engine answers instead. */
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   // Data backend: "memory" = demo store, no sign-in; "supabase" = Postgres + Auth + Storage.
   AWAAZ_DATA_BACKEND: z.enum(["memory", "supabase"]).default("memory"),
@@ -61,6 +68,12 @@ const serverEnvSchema = z.object({
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export const isSupabaseBackend = () => getServerEnv().AWAAZ_DATA_BACKEND === "supabase";
+
+/** Effective reasoning engine, honouring the legacy AWAAZ_LLM_PROVIDER name. Defaults to "rules". */
+export function reasoningProviderSetting(): "rules" | "claude" {
+  const env = getServerEnv();
+  return env.AWAAZ_REASONING_PROVIDER ?? (env.AWAAZ_LLM_PROVIDER === "claude" ? "claude" : "rules");
+}
 
 let cached: ServerEnv | undefined;
 

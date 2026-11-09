@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { ExceptionsTable } from "@/components/dashboard/exceptions-table";
 import { listReports } from "@/server/data";
 
@@ -15,7 +15,7 @@ export default async function ExceptionsPage() {
         title="Exceptions"
         description="Every voice report, with what was extracted, how it was verified and what happened next."
       />
-      <DemoDataBanner />
+      <DataNotice />
       <ExceptionsTable reports={reports} />
     </div>
   );

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { ClaudeReasoningProvider, SYSTEM_PROMPT } from "@/server/providers/llm/claude";
+import { ClaudeReasoningProvider, SYSTEM_PROMPT } from "@/server/providers/reasoning/claude";
 
 // The SDK client is injected and faked: these tests pin the request we send and how responses are handled.
 

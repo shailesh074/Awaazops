@@ -16,8 +16,11 @@ const DIGIT_WORDS: Record<string, string> = {
   saat: "7", sat: "7", aath: "8", ath: "8", auth: "8", aat: "8", nau: "9", nao: "9",
   // Hindi, Devanagari
   शून्य: "0", एक: "1", दो: "2", तीन: "3", चार: "4", पांच: "5", पाँच: "5", छह: "6", छः: "6", छे: "6", सात: "7", आठ: "8", नौ: "9",
+  // English digits as Prisma writes them in Devanagari on hi-IN ("फोर", "एट")
+  ज़ीरो: "0", जीरो: "0", वन: "1", टू: "2", थ्री: "3", फोर: "4", फ़ोर: "4", फाइव: "5", सिक्स: "6", सेवन: "7", एट: "8", नाइन: "9",
   // English
   zero: "0", oh: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9",
+  chhey: "6",
 };
 const TEENS: Record<string, string> = {
   ten: "10", eleven: "11", twelve: "12", thirteen: "13", fourteen: "14", fifteen: "15",
@@ -28,7 +31,10 @@ const TENS: Record<string, string> = {
 };
 const REPEAT: Record<string, number> = { double: 2, triple: 3 };
 /** Words that introduce an order number and carry no digits. */
-const FILLER = new Set(["order", "number", "no", "no.", "num", "id", "#", "ka", "ke", "ki", "wala", "wali", "ord"]);
+const FILLER = new Set([
+  "order", "number", "nambar", "no", "no.", "num", "id", "#", "ka", "ke", "ki", "wala", "wali", "vala", "vali", "ord",
+  "ऑर्डर", "आर्डर", "ऑडर", "ओर्डर", "नंबर", "नम्बर", "नं", "नं.", "का", "के", "की", "वाला", "वाली",
+]);
 const DEVANAGARI_DIGITS = "०१२३४५६७८९";
 
 /**
@@ -43,7 +49,7 @@ export function spokenToDigits(spoken: string | null): string | null {
     .toLowerCase()
     .replace(/(\d),(?=\d{3}\b)/g, "$1") // grouped digits: 4,821 → 4821
     .replace(/[-–]/g, " ");
-  const tokens = text.split(/[\s,.;:]+/).filter(Boolean);
+  const tokens = text.split(/[\s,.;:।]+/).filter(Boolean); // "।" is the Devanagari full stop
 
   let out = "";
   let repeat = 1;
@@ -174,12 +180,12 @@ export function normaliseReasoning(raw: unknown, transcript: string, referenceTi
       // Unreadable or unlocatable references stay null; the validator asks the agent instead of guessing.
       orderReference: digits && orderSpan
         ? { value: digits, evidence: orderSpan, confidence: r.orderReference.confidence }
-        : { value: null, evidence: null, confidence: 0 },
+        : { value: null, evidence: null, confidence: null },
       issue: { value: r.issue.value, evidence: locate(transcript, r.issue.quote), confidence: r.issue.confidence },
       requestedAction: { value: r.requestedAction.value, evidence: locate(transcript, r.requestedAction.quote), confidence: r.requestedAction.confidence },
       timeConstraint: time && timeSpan
         ? { value: time, evidence: timeSpan, confidence: r.time.confidence }
-        : { value: null, evidence: null, confidence: 0 },
+        : { value: null, evidence: null, confidence: null },
       notes: { value: r.notes.value, evidence: locate(transcript, r.notes.quote), confidence: r.notes.confidence },
       ambiguities,
     },

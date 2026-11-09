@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { ArrowLeft, CircleUser, Clock, MapPin, OctagonX } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { EvidenceInspector } from "@/components/shared/evidence-inspector";
 import { JsonView } from "@/components/shared/json-view";
 import { ClipPlayer } from "@/components/audio/clip-player";
@@ -85,7 +85,7 @@ async function ExceptionDetail({ id }: { id: string }) {
         </div>
       </header>
 
-      <DemoDataBanner />
+      <DataNotice />
 
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">

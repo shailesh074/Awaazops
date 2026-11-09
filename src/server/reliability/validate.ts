@@ -54,7 +54,7 @@ export function groundEvidence(payload: ExtractionPayload, transcript: string, e
   const repaired: EvidenceField[] = [];
   for (const key of EVIDENCE_FIELDS) {
     if (exempt.includes(key)) continue;
-    const field = next[key] as { value: unknown; evidence: { quote: string; start: number; end: number } | null; confidence: number };
+    const field = next[key] as { value: unknown; evidence: { quote: string; start: number; end: number } | null; confidence: number | null };
     if (field.value === null) continue;
     const ev = field.evidence;
     if (ev && transcript.slice(ev.start, ev.end) === ev.quote) continue;
@@ -65,7 +65,7 @@ export function groundEvidence(payload: ExtractionPayload, transcript: string, e
     } else {
       field.value = null;
       field.evidence = null;
-      field.confidence = 0;
+      field.confidence = null;
       dropped.push(key);
     }
   }

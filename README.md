@@ -8,7 +8,7 @@ See [PROJECT.md](PROJECT.md) for the vision, architecture, decision log and deve
 
 ```bash
 npm install
-cp .env.example .env.local   # demo mode: in-memory data, mock AI (labelled SIMULATED), no sign-in
+cp .env.example .env.local   # then add GNANI_API_KEY (or set the speech providers to "mock" for offline dev)
 npm run dev
 ```
 
@@ -17,8 +17,17 @@ npm run dev
 - `/lab` — Intelligence Testing Lab
 - `/login` — sign-in (Supabase mode)
 
-Real providers are switched on in `.env.local`: `AWAAZ_STT_PROVIDER=gnani-prisma`, `AWAAZ_TTS_PROVIDER=gnani-timbre`
-(both need `GNANI_API_KEY`), `AWAAZ_LLM_PROVIDER=claude` (needs `ANTHROPIC_API_KEY`).
+**Required AI integrations:** Gnani Prisma v2.5 (speech-to-text) and Gnani Timbre v2.5 (voice), via `GNANI_API_KEY`.
+
+**Reasoning needs no paid API.** The default `AWAAZ_REASONING_PROVIDER=rules` is a deterministic engine for
+Hindi (Devanagari), Hinglish and Indian English: order numbers in digits, digit words or Prisma's spaced digits;
+delivery issues; times like "शाम सात बजे के बाद" / "kal subah" / "after 6 pm". It invents no confidence scores.
+An LLM is an optional enhancement (`AWAAZ_REASONING_PROVIDER=claude` + `ANTHROPIC_API_KEY`); if it is not
+configured, fails, refuses or times out, the rules engine answers and the fallback is recorded on the report.
+Either way, every result goes through the same normaliser, database verification and agent confirmation.
+
+Every result shows where it came from: **Live** (Gnani / an LLM), **Rules** (deterministic, marked "fallback" when
+it stood in for an LLM), or **Simulated** (mock providers and scripted demo data).
 
 ## Connect Supabase
 

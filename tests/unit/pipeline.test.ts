@@ -96,6 +96,25 @@ describe("report pipeline", () => {
     expect(r.report.status).toBe("AWAITING_CONFIRMATION");
   });
 
+  it("handles a Hindi (Devanagari) report end to end with the rules engine", async () => {
+    const r = await submitReport({ agentId: AGENT, language: "hi", audio: null, mockTranscript: "ऑर्डर चार नौ पाँच दो का कस्टमर घर पर नहीं है, शाम सात बजे के बाद डिलीवरी करना।" });
+    expect(r.report.status).toBe("AWAITING_CONFIRMATION");
+    expect(r.order?.id).toBe("ORD-4952");
+    expect(r.extraction?.payload.requestedAction.value).toBe("RESCHEDULE");
+    expect(r.confirmationPrompt).toMatch(/^ऑर्डर 4952: डिलीवरी .* के बाद रीशेड्यूल करूँ\?/);
+    // Provenance: deterministic rules, not simulated, no fallback, no invented confidence.
+    expect(r.extraction?.provenance).toMatchObject({ provider: "rules", simulated: false });
+    expect(r.extraction?.provenance.fallbackFrom).toBeUndefined();
+    expect(r.extraction?.payload.orderReference.confidence).toBeNull();
+
+    const audit = (await getRepository().listAudit()).find((e) => e.reportId === r.report.id && e.event === "VALIDATION_COMPLETED");
+    expect(audit?.after).toMatchObject({ outcome: "VERIFIED", reasoning: { provider: "rules", fallbackFrom: null } });
+
+    const done = await confirmReport(r.report.id, AGENT);
+    expect(done.report.status).toBe("EXECUTED");
+    expect(done.order?.status).toBe("RESCHEDULED");
+  });
+
   it("answers in the agent's language", async () => {
     const r = await submitReport({ agentId: AGENT, language: "en", audio: null, mockTranscript: "Boss 9134 wala order, customer ghar pe nahi hai." });
     expect(r.validation?.clarificationQuestion).toBe("I couldn't find order 9134. Please say the order number again.");

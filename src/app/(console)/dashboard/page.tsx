@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { AlertTriangle, CalendarClock, CheckCircle2, Package, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { KpiGrid, KpiTile } from "@/components/shared/kpi-tile";
 import { Panel } from "@/components/shared/panel";
 import { BarList } from "@/components/shared/bar-list";
@@ -58,7 +58,7 @@ export default async function DashboardPage() {
         title="Overview"
         description="Delivery exceptions reported by voice, verified against orders and actioned after confirmation."
       />
-      <DemoDataBanner />
+      <DataNotice />
 
       <KpiGrid className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
         <KpiTile label="Total orders" value={summary.totalOrders} icon={Package} hint="Today's manifest" />

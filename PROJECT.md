@@ -318,7 +318,10 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 - [ ] Gnani credential access timeline and rate limits for the challenge.
 - [ ] Evon v3.3 availability and fit.
 - [x] LLM provider: Claude (Anthropic SDK), structured outputs supported. Swappable behind `ReasoningProvider`.
-- [ ] Claude live quality on garbled/noisy Hinglish transcripts and its latency at `low` effort (needs a key).
+- [x] Reasoning without a paid API: deterministic rules engine (Hindi/Hinglish/English) is the default; verified live
+      2026-11-09 with Timbre-generated Hindi speech → Prisma hi-IN → rules → Supabase → Hindi prompt (3/3 correct).
+- [ ] Optional: Claude live quality on garbled/noisy Hinglish (needs an Anthropic key; not required).
+- [ ] Rules engine coverage on real field recordings (accents, noise, phrasing outside the lexicon).
 - [x] Next.js 16 conventions: v16.4.5 with Cache Components + Partial Prefetching on by default. Runtime /
       uncached data must sit inside `<Suspense>` or behind `connection()`; `proxy.ts` replaces middleware.
       Bundled docs live in `node_modules/next/dist/docs/` — read them before using a new API (see AGENTS.md).
@@ -380,3 +383,8 @@ gradients, glow effects and clutter. The UI should communicate trust and technic
 | 2026-11-06 | Blank `KEY=` env lines are treated as unset | A blank line must not break startup |
 | 2026-11-08 | Explicitly revoke client write privileges (migration 003) | Supabase's default grants are permissive; grants + RLS are two independent barriers |
 | 2026-11-08 | Own migration runner (`db:migrate`) writing the CLI's migrations table | Works without Docker or `supabase link`; stays compatible with `supabase db push` |
+| 2026-11-09 | Deterministic `rules` engine is the default reasoning provider; LLMs are optional | Gnani offers no public LLM API; no paid dependency beyond Gnani; reproducible behaviour |
+| 2026-11-09 | LLM failure/timeout/refusal/invalid output falls back to rules, recorded in provenance + audit + UI | Supersedes "never swap a failed provider": rules are a real engine, and the swap is never hidden |
+| 2026-11-09 | Confidence is nullable; rules and agent edits report `null` | No invented scores — only an LLM's self-reported confidence is shown, labelled as such |
+| 2026-11-09 | Three provenance kinds: Live / Rules / Simulated; notices reflect actual configuration | A blanket "mock AI" banner was false once Gnani and Supabase were live |
+| 2026-11-09 | Accept Prisma hi-IN's spaced digits ("4 9 5 2") and "07:00" times | Found in the live Hindi round trip; before the fix they produced "no order" and 12:00 instead of 19:00 |

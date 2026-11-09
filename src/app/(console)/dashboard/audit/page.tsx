@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { AuditLog } from "@/components/dashboard/audit-log";
 import { listAgents, listAuditEvents } from "@/server/data";
 
@@ -15,7 +15,7 @@ export default async function AuditPage() {
         title="Audit trail"
         description="Append-only record of submissions, verification outcomes, confirmations and executed changes."
       />
-      <DemoDataBanner />
+      <DataNotice />
       <AuditLog events={events} agents={agents} />
     </div>
   );

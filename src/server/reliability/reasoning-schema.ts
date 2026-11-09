@@ -11,7 +11,8 @@ import { ACTION_TYPES, ISSUE_TYPES } from "@/domain";
  * Every property is required (nullable instead of optional) so the schema is valid for structured outputs.
  */
 const quote = z.string().nullable().describe("Exact substring of the transcript, copied character for character, or null.");
-const confidence = z.number().min(0).max(1).describe("Your confidence in this field, 0 to 1.");
+/** Model-reported confidence, or null when the provider has no real estimate (the rules engine never invents one). */
+const confidence = z.number().min(0).max(1).nullable().describe("Your confidence in this field, 0 to 1, or null if you cannot estimate it.");
 
 export const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 

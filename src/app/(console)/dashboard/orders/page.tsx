@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/shared/page-header";
-import { DemoDataBanner } from "@/components/shared/demo-data-banner";
+import { DataNotice } from "@/components/shared/data-notice";
 import { OrdersTable } from "@/components/dashboard/orders-table";
 import { listAgents, listOrders, listReports } from "@/server/data";
 
@@ -19,7 +19,7 @@ export default async function OrdersPage() {
         title="Orders"
         description="Today's delivery manifest and the voice reports linked to each order."
       />
-      <DemoDataBanner />
+      <DataNotice />
       <OrdersTable orders={orders} agents={agents} reportsByOrder={reportsByOrder} />
     </div>
   );

@@ -35,12 +35,15 @@ export const evidenceSpanSchema = z.object({
 });
 export type EvidenceSpan = z.infer<typeof evidenceSpanSchema>;
 
-/** One extracted value with its evidence and the model's self-reported confidence (0–1). */
+/**
+ * One extracted value with its evidence and the provider's self-reported confidence (0–1).
+ * Null when there is no genuine estimate (rule matches, agent edits, missing values) — never invented.
+ */
 export const extractedField = <T extends z.ZodType>(value: T) =>
   z.object({
     value: value.nullable(),
     evidence: evidenceSpanSchema.nullable(),
-    confidence: z.number().min(0).max(1),
+    confidence: z.number().min(0).max(1).nullable(),
   });
 
 export const timeConstraintSchema = z.object({
