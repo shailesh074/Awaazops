@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ReportFlow } from "@/components/agent/report-flow";
 import { getProviderStatus } from "@/server/providers/status";
 import { requireAgentPage } from "@/server/auth/session";
+import { dataSource, listMyRouteOrders } from "@/server/data";
 
 export const metadata: Metadata = { title: "Report an issue" };
 
@@ -14,7 +15,15 @@ async function Flow() {
   await requireAgentPage();
   const providers = getProviderStatus();
   const simulated = (stage: string) => providers.find((p) => p.stage === stage)?.simulated ?? true;
-  return <ReportFlow sttSimulated={simulated("stt")} ttsSimulated={simulated("tts")} />;
+  const routeOrders = await listMyRouteOrders();
+  return (
+    <ReportFlow
+      sttSimulated={simulated("stt")}
+      ttsSimulated={simulated("tts")}
+      demoStore={dataSource() === "demo-memory"}
+      routeOrders={routeOrders}
+    />
+  );
 }
 
 export default function AgentReportPage() {

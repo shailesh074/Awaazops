@@ -15,7 +15,8 @@ import { issueSummary, orderLabel } from "./exception-row-cells";
 
 const VIEWS: Array<{ id: string; label: string; statuses: ReportStatus[] | null }> = [
   { id: "all", label: "All", statuses: null },
-  { id: "pending", label: "Pending", statuses: ["AWAITING_CONFIRMATION", "NEEDS_CLARIFICATION", "VALIDATED", "EDITED", "CONFIRMED"] },
+  { id: "escalated", label: "Sent to dispatch", statuses: ["ESCALATED"] },
+  { id: "pending", label: "Pending", statuses: ["ESCALATED", "AWAITING_CONFIRMATION", "NEEDS_CLARIFICATION", "VALIDATED", "EDITED", "CONFIRMED"] },
   { id: "clarify", label: "Clarification", statuses: ["NEEDS_CLARIFICATION"] },
   { id: "executed", label: "Executed", statuses: ["EXECUTED"] },
   { id: "closed", label: "Rejected / failed", statuses: ["REJECTED", "FAILED"] },

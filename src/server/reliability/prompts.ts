@@ -12,6 +12,8 @@ export interface PromptSet {
   missingOrder: string;
   orderNotFound: (n: string) => string;
   orderSuggest: (n: string, suggestion: string) => string;
+  /** Appended when the order is missing or unknown: the agent's open orders, so they can pick one. */
+  routeHint: (orders: string[]) => string;
   missingAction: string;
   missingTime: string;
   missingNotes: string;
@@ -27,12 +29,18 @@ const STATUS: Record<LanguageCode, Record<OrderStatus, string>> = {
   hi: { OUT_FOR_DELIVERY: "डिलीवरी के लिए निकला", ATTEMPTED: "प्रयास किया गया", RESCHEDULED: "रीशेड्यूल", DELIVERED: "डिलीवर", FAILED: "फ़ेल", ON_HOLD: "होल्ड पर" },
 };
 
+/** "4821, 4907 and 4952" in the given language's conjunction. */
+function joinList(items: string[], and: string): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")}${and}${items.at(-1)}`;
+}
+
 const HINGLISH: PromptSet = {
   unreadable: "Maaf kijiye, report samajh nahi aayi. Kripya dobara boliye.",
   lowConfidence: "Awaaz saaf nahi aayi. Kripya dobara boliye.",
   missingOrder: "Yeh kaunse order ke baare mein hai? Order number boliye.",
   orderNotFound: (n) => `Order ${n} nahi mila. Kripya order number dobara boliye.`,
   orderSuggest: (n, s) => `Order ${n} nahi mila. Kya aap order ${s} ki baat kar rahe hain?`,
+  routeHint: (o) => ` Aapke route par ${o.length === 1 ? "order" : "orders"}: ${joinList(o, " aur ")}.`,
   missingAction: "Is order ke liye kya karna hai? Jaise reschedule, ya customer unavailable mark karna.",
   missingTime: "Delivery kis time pe karni hai? Kripya time boliye.",
   missingNotes: "Naye instructions kya hain? Kripya boliye.",
@@ -56,6 +64,7 @@ const ENGLISH: PromptSet = {
   missingOrder: "Which order is this about? Please say the order number.",
   orderNotFound: (n) => `I couldn't find order ${n}. Please say the order number again.`,
   orderSuggest: (n, s) => `I couldn't find order ${n}. Did you mean order ${s}?`,
+  routeHint: (o) => ` Your ${o.length === 1 ? "order" : "orders"} today: ${joinList(o, " and ")}.`,
   missingAction: "What should be done for this order? For example, reschedule it or mark the customer unavailable.",
   missingTime: "When should the delivery happen? Please say the time.",
   missingNotes: "What are the new instructions? Please say them.",
@@ -79,6 +88,7 @@ const HINDI: PromptSet = {
   missingOrder: "यह किस ऑर्डर के बारे में है? ऑर्डर नंबर बोलिए।",
   orderNotFound: (n) => `ऑर्डर ${n} नहीं मिला। कृपया ऑर्डर नंबर दोबारा बोलिए।`,
   orderSuggest: (n, s) => `ऑर्डर ${n} नहीं मिला। क्या आप ऑर्डर ${s} की बात कर रहे हैं?`,
+  routeHint: (o) => ` आपके रूट पर ऑर्डर: ${joinList(o, " और ")}।`,
   missingAction: "इस ऑर्डर के लिए क्या करना है? जैसे रीशेड्यूल करना, या ग्राहक को अनुपलब्ध मार्क करना।",
   missingTime: "डिलीवरी किस समय करनी है? कृपया समय बोलिए।",
   missingNotes: "नए निर्देश क्या हैं? कृपया बोलिए।",

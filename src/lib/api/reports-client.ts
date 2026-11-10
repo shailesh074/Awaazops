@@ -89,6 +89,11 @@ export const editReport = (
   edit: { orderReference?: string; requestedAction?: ActionType; notes?: string | null },
 ) => post(`/api/reports/${encodeURIComponent(id)}/edit`, edit);
 
+export const escalateReport = (id: string, note: string | null) => post(`/api/reports/${encodeURIComponent(id)}/escalate`, { note });
+export const resolveEscalation = (id: string, body: { orderId: string; requestedAction: ActionType; notes?: string | null }) =>
+  post(`/api/reports/${encodeURIComponent(id)}/resolve`, body);
+export const closeEscalation = (id: string, note: string) => post(`/api/reports/${encodeURIComponent(id)}/close`, { note });
+
 export interface SpokenReplyResponse {
   decision: "yes" | "no" | "unclear";
   heard: string;

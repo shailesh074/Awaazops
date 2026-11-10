@@ -34,6 +34,7 @@ export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
   VALIDATED: "Validated",
   NEEDS_CLARIFICATION: "Needs clarification",
   AWAITING_CONFIRMATION: "Awaiting confirmation",
+  ESCALATED: "Sent to dispatch",
   EDITED: "Edited",
   CONFIRMED: "Confirmed",
   EXECUTED: "Executed",

@@ -36,3 +36,11 @@ export function suggestOrder(digits: string, agentOrders: Order[]): Order | null
   const near = agentOrders.filter((o) => isNearMiss(digits, o.id.replace(/\D/g, "")));
   return near.length === 1 ? near[0] : null;
 }
+
+/** Orders still open on an agent's route (anything not yet delivered or failed), earliest slot first, at most 5. */
+export function openRouteOrders(orders: Order[], agentId: string): Order[] {
+  return orders
+    .filter((o) => o.assignedAgentId === agentId && o.status !== "DELIVERED" && o.status !== "FAILED")
+    .sort((a, b) => a.slotStart.localeCompare(b.slotStart))
+    .slice(0, 5);
+}

@@ -32,8 +32,8 @@ const TENS: Record<string, string> = {
 const REPEAT: Record<string, number> = { double: 2, triple: 3 };
 /** Words that introduce an order number and carry no digits. */
 const FILLER = new Set([
-  "order", "number", "nambar", "no", "no.", "num", "id", "#", "ka", "ke", "ki", "wala", "wali", "vala", "vali", "ord",
-  "ऑर्डर", "आर्डर", "ऑडर", "ओर्डर", "नंबर", "नम्बर", "नं", "नं.", "का", "के", "की", "वाला", "वाली",
+  "order", "number", "nambar", "no", "no.", "num", "id", "#", "ka", "ke", "ki", "wala", "wali", "vala", "vali", "ord", "is", "was", "hai",
+  "ऑर्डर", "आर्डर", "ऑडर", "ओर्डर", "नंबर", "नम्बर", "नं", "नं.", "का", "के", "की", "वाला", "वाली", "है",
 ]);
 const DEVANAGARI_DIGITS = "०१२३४५६७८९";
 

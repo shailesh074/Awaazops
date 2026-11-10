@@ -8,7 +8,7 @@ import {
   type ValidationOutcome,
 } from "@/domain";
 import { CHECK_LABELS } from "@/lib/labels";
-import { canonicalOrderId, orderDigits, suggestOrder } from "./order-reference";
+import { canonicalOrderId, openRouteOrders, orderDigits, suggestOrder } from "./order-reference";
 import { DELIVERY_HOURS, MIN_TRANSCRIPT_CONFIDENCE, isActionAllowed, missingFields } from "./policy";
 import { PROMPTS, confirmationPrompt } from "./prompts";
 
@@ -196,14 +196,17 @@ export function validateExtraction(input: ValidateInput): ValidateOutput {
     return finish("REJECTED", payload, order, prompt);
   }
 
-  // Clarification, most fundamental gap first.
-  if (spoken === null) return finish("NEEDS_CLARIFICATION", payload, null, CLARIFY.missingOrder);
+  // Clarification, most fundamental gap first. When the order is missing or unknown, name the agent's
+  // open orders so they can pick one instead of guessing again.
+  const route = openRouteOrders(input.orders, input.agentId).map((o) => o.id.replace(/\D/g, ""));
+  const hint = route.length ? CLARIFY.routeHint(route) : "";
+  if (spoken === null) return finish("NEEDS_CLARIFICATION", payload, null, CLARIFY.missingOrder + hint);
   if (!order) {
     const prompt = !digits
-      ? CLARIFY.missingOrder
+      ? CLARIFY.missingOrder + hint
       : suggestion
         ? CLARIFY.orderSuggest(digits, suggestion.id.replace(/\D/g, ""))
-        : CLARIFY.orderNotFound(digits);
+        : CLARIFY.orderNotFound(digits) + hint;
     return finish("NEEDS_CLARIFICATION", payload, null, prompt);
   }
   if (missing.includes("requestedAction")) return finish("NEEDS_CLARIFICATION", payload, null, CLARIFY.missingAction);

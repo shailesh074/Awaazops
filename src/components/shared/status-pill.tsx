@@ -50,6 +50,7 @@ const REPORT_TONE: Record<ReportStatus, Tone> = {
   VALIDATED: "info",
   NEEDS_CLARIFICATION: "warning",
   AWAITING_CONFIRMATION: "accent",
+  ESCALATED: "danger",
   EDITED: "info",
   CONFIRMED: "info",
   EXECUTED: "success",

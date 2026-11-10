@@ -30,6 +30,14 @@ describe("migrations + seed", () => {
     expect(r.rows[0]).toEqual({ agents: 6, orders: 22, reports: 12, audit: 43 });
   });
 
+  it("report statuses in the database match the domain after all migrations", async () => {
+    const r = await db.query<{ def: string }>(
+      "select pg_get_constraintdef(oid) def from pg_constraint where conname = 'voice_reports_status_check'",
+    );
+    const inDb = [...r.rows[0].def.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+    expect(inDb).toEqual([...REPORT_STATUSES]);
+  });
+
   it("keep CHECK constraints in sync with the domain enums", () => {
     const sql = fs.readFileSync(path.resolve(import.meta.dirname, "../../supabase/migrations/20261106000001_core_schema.sql"), "utf8");
     const list = (col: string) => {
@@ -41,7 +49,6 @@ describe("migrations + seed", () => {
     expect(list("language")).toEqual([...LANGUAGE_CODES]);
     expect(list("outcome")).toEqual([...VALIDATION_OUTCOMES]);
     expect(list("type")).toEqual([...ACTION_TYPES]);
-    expect(sql).toContain(REPORT_STATUSES.map((s) => `'${s}'`).join(","));
     expect(ISSUE_TYPES.length).toBeGreaterThan(0); // issue types live inside JSON payloads, validated by Zod
   });
 });

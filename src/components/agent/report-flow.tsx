@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, CircleSlash, Info, Loader2, MapPin, OctagonX, Package, Pencil, RotateCcw, X } from "lucide-react";
+import { CheckCircle2, CircleSlash, Info, Loader2, MapPin, OctagonX, Package, Pencil, RotateCcw, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EvidenceInspector } from "@/components/shared/evidence-inspector";
@@ -9,19 +9,20 @@ import { ValidationChecklist } from "@/components/shared/validation-checklist";
 import { ProviderBadge } from "@/components/shared/provider-badge";
 import { OrderStatusPill, ReportStatusPill } from "@/components/shared/status-pill";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
-import { confirmReport, editReport, rejectReport, submitReport } from "@/lib/api/reports-client";
+import { confirmReport, editReport, escalateReport, rejectReport, submitReport } from "@/lib/api/reports-client";
 import { ACTION_LABELS, type EvidenceFieldKey } from "@/lib/labels";
 import { formatSlot } from "@/lib/format";
-import type { LanguageCode, ReportDetail } from "@/domain";
+import type { LanguageCode, Order, ReportDetail } from "@/domain";
 import { DEMO_SCRIPTS } from "@/mocks/agent-scenarios";
 import { ComposeStep } from "./compose-step";
 import { ProcessingStep, type StageProgress } from "./processing-step";
 import { VoicePromptCard } from "./voice-prompt-card";
 import { EditActionForm, type ActionEdit } from "./edit-action-form";
 import { SpokenReply } from "./spoken-reply";
+import { RouteOrders } from "./route-orders";
 
 type Phase = "compose" | "processing" | "review" | "done";
-type Busy = null | "confirm" | "reject" | "edit";
+type Busy = null | "confirm" | "reject" | "edit" | "escalate";
 
 /** Fields whose value carries no transcript evidence but is set — i.e. typed by the agent in an edit. */
 function agentEdited(detail: ReportDetail): EvidenceFieldKey[] {
@@ -30,7 +31,19 @@ function agentEdited(detail: ReportDetail): EvidenceFieldKey[] {
   return (["orderReference", "requestedAction", "notes"] as const).filter((k) => p[k].value !== null && p[k].evidence === null);
 }
 
-export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boolean; ttsSimulated: boolean }) {
+export function ReportFlow({
+  sttSimulated,
+  ttsSimulated,
+  demoStore,
+  routeOrders,
+}: {
+  sttSimulated: boolean;
+  ttsSimulated: boolean;
+  /** True when data lives in the in-memory demo store (local development only). */
+  demoStore: boolean;
+  /** The agent's open orders, so an unknown order number can be corrected with one tap. */
+  routeOrders: Order[];
+}) {
   const recorder = useAudioRecorder();
   const [phase, setPhase] = useState<Phase>("compose");
   const [language, setLanguage] = useState<LanguageCode>("hi-en");
@@ -40,6 +53,8 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
   const [usedRecording, setUsedRecording] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
+  const [escalating, setEscalating] = useState(false);
+  const [note, setNote] = useState("");
 
   const submit = async () => {
     setProgress({});
@@ -80,26 +95,52 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
     recorder.reset();
     setDetail(null);
     setEditing(false);
+    setEscalating(false);
+    setNote("");
     setPhase("compose");
   };
 
   if (phase === "compose") {
     return (
-      <ComposeStep
-        language={language}
-        onLanguage={setLanguage}
-        recorder={recorder}
-        scenarioId={scriptId}
-        onScenario={setScriptId}
-        onSubmit={submit}
-        sttSimulated={sttSimulated}
-      />
+      <div className="space-y-5">
+        <ComposeStep
+          language={language}
+          onLanguage={setLanguage}
+          recorder={recorder}
+          scenarioId={scriptId}
+          onScenario={setScriptId}
+          onSubmit={submit}
+          sttSimulated={sttSimulated}
+        />
+        <RouteOrders orders={routeOrders} />
+      </div>
     );
   }
 
   if (phase === "processing" || !detail) return <ProcessingStep progress={progress} />;
 
   const { report, validation, extraction, transcript, order, action } = detail;
+
+  if (phase === "done" && report.status === "ESCALATED") {
+    return (
+      <section className="space-y-5 rounded-2xl border bg-surface p-6 text-center">
+        <span className="mx-auto grid size-14 place-items-center rounded-full bg-primary/15 text-primary">
+          <Send className="size-6" />
+        </span>
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Sent to dispatch</h2>
+          <p className="text-sm text-pretty text-muted-foreground">
+            Your report, recording and transcript are with the dispatcher, who will link the right order or follow up.
+            Nothing was changed on any order.
+          </p>
+        </div>
+        <p className="font-mono text-xs text-muted-foreground">{report.id}</p>
+        <Button className="w-full" onClick={startOver}>
+          Report another issue
+        </Button>
+      </section>
+    );
+  }
 
   if (phase === "done") {
     const executed = report.status === "EXECUTED";
@@ -131,7 +172,7 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
         ) : null}
         {executed ? (
           <p className="text-xs text-muted-foreground">
-            Recorded in the audit trail as {report.id}. Demo store: resets when the server restarts.
+            Recorded in the audit trail as {report.id}.{demoStore ? " Demo store: resets when the server restarts." : ""}
           </p>
         ) : null}
         <Button className="w-full" onClick={startOver}>
@@ -249,6 +290,16 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
         />
       ) : null}
 
+      {clarify && !validation.resolvedOrderId && !editing ? (
+        <RouteOrders
+          orders={routeOrders}
+          title="Pick the order"
+          description="Tap the order you meant. It is checked again before anything can change."
+          disabled={busy !== null}
+          onPick={(o) => saveEdit({ orderReference: o.id.replace(/\D/g, "") })}
+        />
+      ) : null}
+
       <ValidationChecklist validation={validation} compact />
 
       {awaiting && !sttSimulated && !editing ? (
@@ -302,6 +353,39 @@ export function ReportFlow({ sttSimulated, ttsSimulated }: { sttSimulated: boole
               <Button size="lg" variant="secondary" className="h-11" onClick={() => setEditing(true)} disabled={editing || busy !== null}>
                 <Pencil /> Correct by typing
               </Button>
+              {escalating ? (
+                <div className="space-y-2 rounded-2xl border bg-surface p-4">
+                  <label htmlFor="escalate-note" className="text-sm font-medium">
+                    Note for the dispatcher <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <textarea
+                    id="escalate-note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="e.g. Order number on the parcel is torn"
+                    className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="ghost" onClick={() => setEscalating(false)} disabled={busy !== null}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        run("escalate", () => escalateReport(report.id, note.trim() || null), () => setPhase("done"))
+                      }
+                      disabled={busy !== null}
+                    >
+                      {busy === "escalate" ? <Loader2 className="animate-spin" /> : <Send />} Send
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button size="lg" variant="ghost" className="h-11" onClick={() => setEscalating(true)} disabled={busy !== null}>
+                  <Send /> Send to dispatcher
+                </Button>
+              )}
             </>
           ) : (
             <Button size="lg" variant="secondary" className="h-11" onClick={startOver}>

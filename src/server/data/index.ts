@@ -6,6 +6,7 @@ import { LAB_RUNS, LAB_SAMPLES } from "@/mocks/lab";
 import { isSupabaseBackend } from "@/server/env";
 import { getReadRepository } from "@/server/repositories";
 import { requireAgentPage, requireDispatcherPage } from "@/server/auth/session";
+import { openRouteOrders } from "@/server/reliability/order-reference";
 
 /**
  * Read side for pages. Every function authorises the viewer first (redirecting if needed) and then reads
@@ -16,7 +17,7 @@ export function dataSource(): "demo-memory" | "database" {
   return isSupabaseBackend() ? "database" : "demo-memory";
 }
 
-const PENDING = new Set(["NEEDS_CLARIFICATION", "AWAITING_CONFIRMATION", "VALIDATED", "EDITED", "CONFIRMED"]);
+const PENDING = new Set(["ESCALATED", "NEEDS_CLARIFICATION", "AWAITING_CONFIRMATION", "VALIDATED", "EDITED", "CONFIRMED"]);
 
 export function isPending(r: ReportDetail): boolean {
   return PENDING.has(r.report.status);
@@ -89,6 +90,13 @@ export async function getLabView(): Promise<LabView> {
   const [stored, run] = await Promise.all([repo.listLabSamples(), repo.getLatestLabRun()]);
   if (run && run.results.length > 0) return { source: "measured", run, samples: stored, storedSamples: stored.length };
   return { source: "demo", run: LAB_RUNS[0], samples: LAB_SAMPLES, storedSamples: stored.length };
+}
+
+/** The signed-in agent's open orders (RLS limits the read to their own route), earliest slot first. */
+export async function listMyRouteOrders(): Promise<Order[]> {
+  await connection();
+  const viewer = await requireAgentPage();
+  return openRouteOrders(await (await getReadRepository()).listOrders(), viewer.agentId);
 }
 
 /** The signed-in agent's own reports, newest first. */

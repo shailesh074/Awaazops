@@ -12,10 +12,16 @@ describe("report lifecycle", () => {
       expect(canTransition(from, "EXECUTED")).toBe(from === "CONFIRMED");
     }
   });
-  it("reaches CONFIRMED only from AWAITING_CONFIRMATION", () => {
+  it("reaches CONFIRMED only from AWAITING_CONFIRMATION (agent) or ESCALATED (dispatcher)", () => {
     for (const from of REPORT_STATUSES) {
-      expect(canTransition(from, "CONFIRMED")).toBe(from === "AWAITING_CONFIRMATION");
+      expect(canTransition(from, "CONFIRMED")).toBe(from === "AWAITING_CONFIRMATION" || from === "ESCALATED");
     }
+  });
+  it("reaches EXECUTED only from CONFIRMED", () => {
+    for (const from of REPORT_STATUSES) expect(canTransition(from, "EXECUTED")).toBe(from === "CONFIRMED");
+  });
+  it("is sent to dispatch only from NEEDS_CLARIFICATION", () => {
+    for (const from of REPORT_STATUSES) expect(canTransition(from, "ESCALATED")).toBe(from === "NEEDS_CLARIFICATION");
   });
   it("treats terminal states as final", () => {
     for (const to of REPORT_STATUSES) {

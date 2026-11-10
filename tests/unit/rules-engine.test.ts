@@ -34,6 +34,25 @@ describe("rules engine — Hinglish (romanised)", () => {
     expect(r.requestedAction.value).toBe("MARK_CUSTOMER_UNAVAILABLE");
   });
 
+  it.each([
+    "the order number is 108 and i found that no one is here to pick up it so what's the next process",
+    "order 4907 nobody answered the door",
+    "Order 4907, the house is locked",
+    "order 4907 pe koi nahi hai",
+    "order 4907 lene wala koi nahi",
+    "order 4907 ghar pe taala laga hai",
+    "ऑर्डर 4907 पर कोई नहीं है",
+    "ऑर्डर 4907 घर पर ताला लगा है",
+  ])("recognises 'nobody there' phrasing as customer unavailable: %s", (text) => {
+    const r = run(text);
+    expect(r.issue.value).toBe("CUSTOMER_UNAVAILABLE");
+    expect(r.requestedAction.value).toBe("MARK_CUSTOMER_UNAVAILABLE");
+  });
+
+  it.each(["order 4907 koi problem nahi hai, deliver ho gaya", "there is no one way street here"])("does not over-match: %s", (text) => {
+    expect(run(text).issue.value).not.toBe("CUSTOMER_UNAVAILABLE");
+  });
+
   it("records new delivery instructions as a note", () => {
     const r = run("Order 4952 ka customer bol raha hai gate number 2 se aana, main gate band hai.");
     expect(r.requestedAction.value).toBe("UPDATE_INSTRUCTIONS");
@@ -195,7 +214,7 @@ describe("rules engine → normaliser → validator", () => {
     const out = verify("ऑर्डर नौ एक तीन चार का कस्टमर घर पर नहीं है", "hi");
     expect(out.outcome).toBe("NEEDS_CLARIFICATION");
     expect(out.checks.find((c) => c.id === "ORDER_EXISTS")?.status).toBe("FAIL");
-    expect(out.prompt).toBe("ऑर्डर 9134 नहीं मिला। कृपया ऑर्डर नंबर दोबारा बोलिए।");
+    expect(out.prompt).toBe("ऑर्डर 9134 नहीं मिला। कृपया ऑर्डर नंबर दोबारा बोलिए। आपके रूट पर ऑर्डर: 4821 और 7761।");
   });
 
   it("suggests the single near-miss for a misheard Hinglish order", () => {
@@ -207,7 +226,7 @@ describe("rules engine → normaliser → validator", () => {
   it("asks which order when two were mentioned", () => {
     const out = verify("Order 4821 ka customer ghar pe nahi hai, aur order 4907 ka bhi.", "en", [...ORDERS, order("ORD-4907")]);
     expect(out.outcome).toBe("NEEDS_CLARIFICATION");
-    expect(out.prompt).toBe("Which order is this about? Please say the order number.");
+    expect(out.prompt).toBe("Which order is this about? Please say the order number. Your orders today: 4821, 7761 and 4907.");
   });
 
   it("asks for a time when 'later' had none", () => {

@@ -3,15 +3,18 @@ import type { ReportStatus } from "./reports";
 /**
  * Allowed report state transitions. This is the structural guarantee behind
  * "never execute an operational action without confirmation": EXECUTED is reachable only from CONFIRMED,
- * and CONFIRMED only from AWAITING_CONFIRMATION.
+ * and CONFIRMED only from AWAITING_CONFIRMATION (agent) or ESCALATED (dispatcher, after re-verification).
  */
 export const REPORT_TRANSITIONS: Readonly<Record<ReportStatus, readonly ReportStatus[]>> = {
   RECORDED: ["TRANSCRIBED", "FAILED"],
   TRANSCRIBED: ["EXTRACTED", "FAILED"],
   EXTRACTED: ["VALIDATED", "NEEDS_CLARIFICATION", "REJECTED", "FAILED"],
   VALIDATED: ["AWAITING_CONFIRMATION", "FAILED"],
-  NEEDS_CLARIFICATION: ["EXTRACTED", "EDITED", "REJECTED", "FAILED"],
+  NEEDS_CLARIFICATION: ["EXTRACTED", "EDITED", "ESCALATED", "REJECTED", "FAILED"],
   AWAITING_CONFIRMATION: ["CONFIRMED", "EDITED", "REJECTED"],
+  // A dispatcher resolves an escalation: links the right order (re-verified, then confirmed by the dispatcher)
+  // or closes it with a note.
+  ESCALATED: ["CONFIRMED", "REJECTED"],
   EDITED: ["VALIDATED", "NEEDS_CLARIFICATION", "REJECTED"],
   CONFIRMED: ["EXECUTED", "FAILED"],
   EXECUTED: [],

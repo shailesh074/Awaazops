@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "awaazops-demo",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set AWAAZ_DATA_BACKEND=memory&& set AWAAZ_STT_PROVIDER=mock&& set AWAAZ_TTS_PROVIDER=mock&& npx next dev -p 3100"],
+      "port": 3100
     }
   ]
 }

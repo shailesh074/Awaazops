@@ -11,6 +11,8 @@ export const REPORT_STATUSES = [
   "VALIDATED",
   "NEEDS_CLARIFICATION",
   "AWAITING_CONFIRMATION",
+  /** The agent could not resolve it and handed it to dispatch; a dispatcher links the order or closes it. */
+  "ESCALATED",
   "EDITED",
   "CONFIRMED",
   "EXECUTED",

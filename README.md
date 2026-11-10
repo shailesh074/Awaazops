@@ -40,6 +40,12 @@ latest measured run; until one exists it shows the scripted demo run under a "de
 "yes" / "no"). Only a reply made entirely of yes-words (or no-words) plus fillers counts; anything else changes
 nothing. The buttons remain the primary path, and the audit trail records what was heard.
 
+**Unknown or missing order.** The clarification names the agent's open orders ("Your orders today: 4821, 4907 and
+4952") and the agent can tap one; the report is re-verified before anything can change. If it still can't be
+resolved, **Send to dispatcher** keeps the report, transcript and recording as an escalation. A dispatcher links the
+right order (the same verification applies; the action is recorded as confirmed by the dispatcher) or closes it with
+a note.
+
 ## Connect Supabase
 
 1. Create a Supabase project. Put its URL, publishable (anon) key, secret (service role) key and the
@@ -87,6 +93,9 @@ refreshes sessions and redirects; it is not the security boundary.
 | `POST /api/reports/:id/confirm` | agent (own) | The only path to an operational change |
 | `POST /api/reports/:id/reject` | agent (own) | Discard; nothing changes |
 | `POST /api/reports/:id/spoken-reply` | agent (own) | multipart `audio`, `language`, `durationMs` — Prisma transcribes the reply; a clear yes confirms, a clear no rejects, anything else changes nothing. Returns `{ decision, heard, report }` |
+| `POST /api/reports/:id/escalate` | agent (own) | JSON `{ note? }` — a report that needs clarification (e.g. unknown order) goes to dispatch; nothing changes |
+| `POST /api/reports/:id/resolve` | dispatcher | JSON `{ orderId, requestedAction, notes? }` — re-verified against the reporting agent's route; executes only if verified, confirmed by the dispatcher |
+| `POST /api/reports/:id/close` | dispatcher | JSON `{ note }` — close an escalated report without changes |
 | `POST /api/lab/samples` | dispatcher | multipart labelled clip: `audio`, `title`, `language`, `accent`, `noise`, `durationMs`, `reference?`, `expectedOrder?`, `expectedIssue?`, `expectedAction?`, `expectsClarification` |
 | `GET /api/lab/samples/:id/audio` | dispatcher | Stored sample audio |
 | `POST /api/lab/runs` | dispatcher | Benchmark every stored sample through Prisma → reasoning → verification. Streams NDJSON progress. Refuses on mock STT |

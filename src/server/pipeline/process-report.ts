@@ -275,21 +275,27 @@ export async function editReport(
   return agentView(await repo.getReport(id), agentId);
 }
 
-/**
- * The only path to an operational write. Requires AWAITING_CONFIRMATION, re-checks the order at the
- * moment of confirmation (it may have changed), then executes and audits.
- */
-/** How a decision reached the server: a button tap, or a spoken reply (with what was heard). */
+/** How a decision reached the server: a button tap, a spoken reply (with what was heard), or a dispatcher. */
 export type DecisionChannel =
   | { channel: "tap" }
-  | { channel: "voice"; heard: string; sttProvider: string; sttModel: string | null };
+  | { channel: "voice"; heard: string; sttProvider: string; sttModel: string | null }
+  | { channel: "dispatcher"; note: string | null };
 
-export async function confirmReport(id: string, agentId: string, via: DecisionChannel = { channel: "tap" }): Promise<ReportDetail> {
-  const repo = getRepository();
-  const stored = await loadOwned(repo, id, agentId);
-  if (stored.report.status !== "AWAITING_CONFIRMATION")
-    throw new ReportError("INVALID_STATE", `Only reports awaiting confirmation can be confirmed (this one is ${stored.report.status}).`);
+interface Confirmer {
+  actorId: string;
+  actorRole: "AGENT" | "DISPATCHER";
+  via: DecisionChannel;
+}
 
+/**
+ * The only path to an operational write. Called once a person has decided (the agent on AWAITING_CONFIRMATION,
+ * or a dispatcher on an ESCALATED report after re-verification). Moves the report to CONFIRMED, re-checks the
+ * order at that moment (it may have changed), then commits order update, action record, EXECUTED and audit
+ * in one atomic step.
+ */
+async function executeConfirmed(repo: OperationsRepository, stored: StoredReport, by: Confirmer, from: ReportStatus): Promise<void> {
+  const id = stored.report.id;
+  const agentId = stored.report.agentId;
   const payload = stored.extraction?.payload;
   const action = payload?.requestedAction.value;
   const orderId = stored.validation?.resolvedOrderId;
@@ -298,14 +304,13 @@ export async function confirmReport(id: string, agentId: string, via: DecisionCh
   transition(stored, "CONFIRMED");
   const confirmedAt = now();
   await repo.saveReport(stored);
-  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "ACTION_CONFIRMED", before: { status: "AWAITING_CONFIRMATION" }, after: { status: "CONFIRMED", action, via }, createdAt: confirmedAt });
+  await repo.appendAudit({ actorId: by.actorId, actorRole: by.actorRole, entity: "REPORT", entityId: id, reportId: id, event: "ACTION_CONFIRMED", before: { status: from }, after: { status: "CONFIRMED", action, via: by.via }, createdAt: confirmedAt });
 
   const fail = async (reason: string) => {
     transition(stored, "FAILED");
     stored.report.failureReason = reason;
     await repo.saveReport(stored);
     await repo.appendAudit({ actorId: "system", actorRole: "SYSTEM", entity: "REPORT", entityId: id, reportId: id, event: "PIPELINE_FAILED", before: null, after: { reason }, createdAt: now() });
-    return agentView(await repo.getReport(id), agentId);
   };
 
   const order = await repo.getOrder(orderId);
@@ -326,7 +331,7 @@ export async function confirmReport(id: string, agentId: string, via: DecisionCh
       executedAt,
       expectedOrderUpdatedAt: order.updatedAt,
       order: applied.order,
-      action: { id: actionId, reportId: id, orderId, type: action, payload: applied.actionPayload, status: "EXECUTED", confirmedBy: agentId, confirmedAt, executedAt },
+      action: { id: actionId, reportId: id, orderId, type: action, payload: applied.actionPayload, status: "EXECUTED", confirmedBy: by.actorId, confirmedAt, executedAt },
       audit: [
         { actorId: "system", actorRole: "SYSTEM", entity: "ACTION", entityId: actionId, reportId: id, event: "ACTION_EXECUTED", before: null, after: { type: action, ...applied.actionPayload }, createdAt: executedAt },
         { actorId: "system", actorRole: "SYSTEM", entity: "ORDER", entityId: orderId, reportId: id, event: "ORDER_UPDATED", before: { status: order.status, instructions: order.instructions, slotStart: order.slotStart, slotEnd: order.slotEnd }, after: { status: applied.order.status, instructions: applied.order.instructions, slotStart: applied.order.slotStart, slotEnd: applied.order.slotEnd }, createdAt: executedAt },
@@ -336,7 +341,104 @@ export async function confirmReport(id: string, agentId: string, via: DecisionCh
     if (err instanceof OrderChangedError) return fail(`Order ${orderId} changed before confirmation; nothing was updated.`);
     throw err;
   }
+}
+
+/** The agent confirms a verified report. Requires AWAITING_CONFIRMATION. */
+export async function confirmReport(id: string, agentId: string, via: DecisionChannel = { channel: "tap" }): Promise<ReportDetail> {
+  const repo = getRepository();
+  const stored = await loadOwned(repo, id, agentId);
+  if (stored.report.status !== "AWAITING_CONFIRMATION")
+    throw new ReportError("INVALID_STATE", `Only reports awaiting confirmation can be confirmed (this one is ${stored.report.status}).`);
+  await executeConfirmed(repo, stored, { actorId: agentId, actorRole: "AGENT", via }, "AWAITING_CONFIRMATION");
   return agentView(await repo.getReport(id), agentId);
+}
+
+/**
+ * The agent cannot resolve a report (e.g. the order number is not in the system) and hands it to dispatch.
+ * Nothing changes on any order; the report, transcript and recording are kept for a dispatcher to resolve.
+ */
+export async function escalateReport(id: string, agentId: string, note: string | null): Promise<ReportDetail> {
+  const repo = getRepository();
+  const stored = await loadOwned(repo, id, agentId);
+  if (stored.report.status !== "NEEDS_CLARIFICATION")
+    throw new ReportError("INVALID_STATE", `Only reports that need clarification can be sent to dispatch (this one is ${stored.report.status}).`);
+  transition(stored, "ESCALATED");
+  if (stored.priority === "LOW" || stored.priority === "MEDIUM") stored.priority = "HIGH";
+  await repo.saveReport(stored);
+  await repo.appendAudit({ actorId: agentId, actorRole: "AGENT", entity: "REPORT", entityId: id, reportId: id, event: "REPORT_ESCALATED", before: { status: "NEEDS_CLARIFICATION", question: stored.validation?.clarificationQuestion ?? null }, after: { status: "ESCALATED", note }, createdAt: now() });
+  return agentView(await repo.getReport(id), agentId);
+}
+
+async function loadEscalated(repo: OperationsRepository, id: string): Promise<StoredReport> {
+  const stored = await repo.getStoredReport(id);
+  if (!stored) throw new ReportError("NOT_FOUND", `Report ${id} not found.`);
+  if (stored.report.status !== "ESCALATED")
+    throw new ReportError("INVALID_STATE", `Only reports sent to dispatch can be resolved (this one is ${stored.report.status}).`);
+  return stored;
+}
+
+/**
+ * A dispatcher resolves an escalated report by naming the order and the action. The choice goes through
+ * the same verification as an agent's (order exists, on the reporting agent's route, action allowed for its
+ * status, required fields present); only a VERIFIED choice is executed, confirmed by the dispatcher.
+ * Otherwise nothing changes and the report stays with dispatch.
+ */
+export async function resolveEscalation(
+  id: string,
+  dispatcherId: string,
+  input: { orderId: string; requestedAction: ActionType; notes?: string | null },
+): Promise<ReportDetail> {
+  const repo = getRepository();
+  const stored = await loadEscalated(repo, id);
+  if (!stored.extraction || !stored.transcript)
+    throw new ReportError("INVALID_STATE", "This report has no readable transcript to act on. Close it with a note and contact the agent.");
+
+  const payload = structuredClone(stored.extraction.payload);
+  payload.orderReference = { value: input.orderId, evidence: null, confidence: null };
+  payload.requestedAction = { value: input.requestedAction, evidence: null, confidence: null };
+  const provided: Array<"orderReference" | "requestedAction" | "notes"> = ["orderReference", "requestedAction"];
+  const notes = input.notes?.trim() || null;
+  if (notes) {
+    payload.notes = { value: notes, evidence: null, confidence: null };
+    provided.push("notes");
+  }
+
+  const v = validateExtraction({
+    raw: payload,
+    transcript: stored.transcript.text,
+    transcriptConfidence: stored.transcript.confidence,
+    agentId: stored.report.agentId,
+    referenceTime: now(),
+    orders: await repo.listOrders(),
+    agentProvided: provided,
+    language: "en",
+  });
+  if (v.outcome !== "VERIFIED" || !v.resolvedOrder || !v.payload) {
+    const failed = v.checks.filter((c) => c.status === "FAIL").map((c) => c.detail);
+    throw new ReportError("INVALID_STATE", `Not applied: ${failed.join(" ") || v.prompt} The report stays with dispatch.`);
+  }
+
+  stored.validation = { reportId: id, outcome: "VERIFIED", checks: v.checks, resolvedOrderId: v.resolvedOrder.id, clarificationQuestion: null };
+  stored.extraction = { ...stored.extraction, payload: v.payload };
+  stored.confirmationPrompt = null;
+  await repo.appendAudit({ actorId: dispatcherId, actorRole: "DISPATCHER", entity: "REPORT", entityId: id, reportId: id, event: "ESCALATION_RESOLVED", before: { status: "ESCALATED" }, after: { orderId: v.resolvedOrder.id, action: input.requestedAction, notes }, createdAt: now() });
+  await executeConfirmed(repo, stored, { actorId: dispatcherId, actorRole: "DISPATCHER", via: { channel: "dispatcher", note: notes } }, "ESCALATED");
+  return requireReport(await repo.getReport(id));
+}
+
+/** A dispatcher closes an escalated report without any order change, recording why. */
+export async function closeEscalation(id: string, dispatcherId: string, note: string): Promise<ReportDetail> {
+  const repo = getRepository();
+  const stored = await loadEscalated(repo, id);
+  transition(stored, "REJECTED");
+  await repo.saveReport(stored);
+  await repo.appendAudit({ actorId: dispatcherId, actorRole: "DISPATCHER", entity: "REPORT", entityId: id, reportId: id, event: "ESCALATION_CLOSED", before: { status: "ESCALATED" }, after: { status: "REJECTED", note }, createdAt: now() });
+  return requireReport(await repo.getReport(id));
+}
+
+function requireReport(detail: ReportDetail | null): ReportDetail {
+  if (!detail) throw new ReportError("NOT_FOUND", "Report not found.");
+  return detail;
 }
 
 export async function rejectReport(id: string, agentId: string, via: DecisionChannel = { channel: "tap" }): Promise<ReportDetail> {

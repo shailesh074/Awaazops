@@ -16,7 +16,9 @@ import { ValidationChecklist } from "@/components/shared/validation-checklist";
 import { AuditTimeline } from "@/components/dashboard/audit-timeline";
 import { StageTimings } from "@/components/dashboard/stage-timings";
 import { issueSummary } from "@/components/dashboard/exception-row-cells";
-import { getReport, listAgents, listAuditEvents } from "@/server/data";
+import { ResolveEscalation } from "@/components/dashboard/resolve-escalation";
+import { getReport, listAgents, listAuditEvents, listOrders } from "@/server/data";
+import { openRouteOrders } from "@/server/reliability/order-reference";
 import { formatDateTime, formatDuration, formatSlot } from "@/lib/format";
 import { ACTION_LABELS, LANGUAGE_LABELS_SHORT } from "@/lib/labels";
 
@@ -57,9 +59,12 @@ async function ExceptionDetail({ id }: { id: string }) {
   const detail = await getReport(id);
   if (!detail) notFound();
   const { report, agent, transcript, extraction, validation, order, action } = detail;
-  const [events, agents] = await Promise.all([listAuditEvents(report.id), listAgents()]);
+  const escalated = report.status === "ESCALATED";
+  const [events, agents, orders] = await Promise.all([listAuditEvents(report.id), listAgents(), escalated ? listOrders() : Promise.resolve([])]);
   // listAuditEvents is newest first; the per-report trail reads better oldest first.
   const scoped = [...events].reverse();
+  const escalation = scoped.findLast((e) => e.event === "REPORT_ESCALATED");
+  const agentNote = (escalation?.after as { note?: string | null } | null)?.note ?? null;
 
   return (
     <div className="space-y-6">
@@ -144,6 +149,22 @@ async function ExceptionDetail({ id }: { id: string }) {
         </div>
 
         <div className="space-y-6">
+          {escalated ? (
+            <Panel title="Sent to dispatch" description="The agent could not resolve this report and handed it to you">
+              {agentNote ? (
+                <p className="mb-4 rounded-lg border bg-background/60 px-3 py-2.5 text-sm text-pretty">
+                  <span className="mb-0.5 block text-xs text-muted-foreground">Agent&apos;s note</span>
+                  {agentNote}
+                </p>
+              ) : null}
+              <ResolveEscalation
+                reportId={report.id}
+                agentName={agent.name}
+                routeOrders={openRouteOrders(orders, agent.id)}
+                suggestedAction={extraction?.payload.requestedAction.value ?? null}
+              />
+            </Panel>
+          ) : null}
           <Panel title="Order">
             {order ? (
               <div className="space-y-3 text-sm">
@@ -181,13 +202,14 @@ async function ExceptionDetail({ id }: { id: string }) {
                 <dt className="text-muted-foreground">Type</dt>
                 <dd className="text-sm">{ACTION_LABELS[action.type]}</dd>
                 <dt className="text-muted-foreground">Confirmed</dt>
-                <dd>{formatDateTime(action.confirmedAt)} by agent</dd>
+                <dd>{formatDateTime(action.confirmedAt)} by {action.confirmedBy === report.agentId ? "agent" : "dispatcher"}</dd>
                 <dt className="text-muted-foreground">Executed</dt>
                 <dd>{action.executedAt ? formatDateTime(action.executedAt) : "Pending"}</dd>
               </dl>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No action executed. Operational updates require the agent&apos;s explicit confirmation.
+                No action executed. Operational updates require the agent&apos;s explicit confirmation, or a
+                dispatcher&apos;s for a report sent to dispatch.
               </p>
             )}
           </Panel>

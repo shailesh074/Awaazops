@@ -117,6 +117,6 @@ describe("report pipeline", () => {
 
   it("answers in the agent's language", async () => {
     const r = await submitReport({ agentId: AGENT, language: "en", audio: null, mockTranscript: "Boss 9134 wala order, customer ghar pe nahi hai." });
-    expect(r.validation?.clarificationQuestion).toBe("I couldn't find order 9134. Please say the order number again.");
+    expect(r.validation?.clarificationQuestion).toMatch(/^I couldn't find order 9134\. Please say the order number again\. Your orders today: [\d, ]+ and \d+\.$/);
   });
 });

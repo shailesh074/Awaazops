@@ -13,6 +13,10 @@ export const EVENT_LABELS: Record<string, string> = {
   REPORT_REJECTED: "Report rejected",
   REPORT_EDITED: "Report edited by agent",
   PIPELINE_FAILED: "Pipeline failed",
+  SPOKEN_REPLY_UNCLEAR: "Spoken reply unclear",
+  REPORT_ESCALATED: "Sent to dispatch",
+  ESCALATION_RESOLVED: "Resolved by dispatcher",
+  ESCALATION_CLOSED: "Closed by dispatcher",
 };
 
 function describe(e: AuditEvent): string | null {
@@ -25,6 +29,9 @@ function describe(e: AuditEvent): string | null {
   if (e.event === "VALIDATION_COMPLETED") return String(after.outcome);
   if (e.event === "ACTION_CONFIRMED" || e.event === "ACTION_EXECUTED") return String(after.action ?? after.type ?? "");
   if (e.event === "PIPELINE_FAILED") return String(after.reason ?? "");
+  if (e.event === "REPORT_ESCALATED" || e.event === "ESCALATION_CLOSED") return after.note ? `“${String(after.note)}”` : null;
+  if (e.event === "ESCALATION_RESOLVED") return `${String(after.orderId)} · ${String(after.action)}`;
+  if (e.event === "SPOKEN_REPLY_UNCLEAR") return after.heard ? `heard “${String(after.heard)}”` : null;
   return null;
 }
 
@@ -43,7 +50,7 @@ export function AuditTimeline({
   return (
     <ol className={cn("relative space-y-0", className)}>
       {events.map((e, i) => {
-        const Icon: LucideIcon = e.actorRole === "AGENT" ? CircleUser : Bot;
+        const Icon: LucideIcon = e.actorRole === "SYSTEM" ? Bot : CircleUser;
         const detail = describe(e);
         const reportId = e.reportId;
         return (
@@ -68,7 +75,7 @@ export function AuditTimeline({
                 </time>
               </div>
               <p className="text-xs text-muted-foreground">
-                {e.actorRole === "AGENT" ? (agentName.get(e.actorId) ?? e.actorId) : "System"} ·{" "}
+                {e.actorRole === "AGENT" ? (agentName.get(e.actorId) ?? e.actorId) : e.actorRole === "DISPATCHER" ? "Dispatcher" : "System"} ·{" "}
                 <span className="font-mono">{e.entityId}</span>
                 {detail ? <> · {detail}</> : null}
                 {linkReports && reportId ? (

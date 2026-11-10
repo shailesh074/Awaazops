@@ -65,7 +65,8 @@ const first = (text: string, patterns: string[]): Hit | null => {
 
 function findOrderReference(t: string): { spoken: string | null; ambiguities: string[] } {
   const patterns = [
-    `${B}${ORDER_KEYWORD}${E}\\s*(?:${ORDER_NUMBER_WORD}\\s*)?[:#]?\\s*(?:${NUMBER}${E}|${SEQ})`,
+    // "order 4821", "order number 4821", "order number is 4821", "order no. hai 4821"
+    `${B}${ORDER_KEYWORD}${E}\\s*(?:${ORDER_NUMBER_WORD}\\s*)?(?:(?:is|was|hai|है)\\s+)?[:#]?\\s*(?:${NUMBER}${E}|${SEQ})`,
     `${B}${NUMBER}${E}(?=\\s*${ORDER_SUFFIX}${E})`,
     `${B}${SEQ}(?=\\s*${ORDER_SUFFIX}${E})`,
     `${B}#\\s?${NUMBER}${E}`,
