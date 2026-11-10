@@ -58,7 +58,21 @@ const serverEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
   /** Server-only. Bypasses RLS — used solely by the server pipeline and admin scripts. */
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
+
+  /** Set by Vercel itself: "production" on the production deployment, "preview" on branch/PR deployments. */
+  VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
 }).superRefine((env, ctx) => {
+  // A production deployment must never fall back to the demo store or simulated speech silently.
+  // Demo mode remains available locally and on preview deployments.
+  if (env.VERCEL_ENV === "production") {
+    const required = [
+      ["AWAAZ_DATA_BACKEND", env.AWAAZ_DATA_BACKEND === "supabase", "must be \"supabase\" in production (the in-memory demo store is not allowed)"],
+      ["AWAAZ_STT_PROVIDER", env.AWAAZ_STT_PROVIDER === "gnani-prisma", "must be \"gnani-prisma\" in production (simulated speech-to-text is not allowed)"],
+      ["AWAAZ_TTS_PROVIDER", env.AWAAZ_TTS_PROVIDER === "gnani-timbre", "must be \"gnani-timbre\" in production (simulated voice is not allowed)"],
+      ["GNANI_API_KEY", Boolean(env.GNANI_API_KEY), "required in production"],
+    ] as const;
+    for (const [key, ok, message] of required) if (!ok) ctx.addIssue({ code: "custom", path: [key], message });
+  }
   if (env.AWAAZ_DATA_BACKEND !== "supabase") return;
   for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"] as const) {
     if (!env[key]) ctx.addIssue({ code: "custom", path: [key], message: "required when AWAAZ_DATA_BACKEND=supabase" });
